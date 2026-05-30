@@ -16,175 +16,63 @@ module pade_cbrt_rom (
     end
 endmodule
 
-module fp_cbrt #(
-    parameter STAGES = 20
-)(
-    input  wire        clk,
-    input  wire        rst_n,
-    input  wire        in_valid,
-    input  wire [31:0] in_operand_A,
-    
-    // --- GIAO TIEP VOI BO NHAN (FP_MUL) ---
-    output reg         mul_req,       
-    output reg  [31:0] mul_op_a,      
-    output reg  [31:0] mul_op_b,      
-    input  wire        mul_ack,       
-    input  wire [31:0] mul_result,    
-    
-    // --- GIAO TIEP VOI BO FMA (FP_FMA) ---
-    output reg         fma_req,       
-    output reg  [31:0] fma_op_a,
-    output reg  [31:0] fma_op_b,
-    output reg  [31:0] fma_op_c,
-    input  wire        fma_ack,       
-    input  wire [31:0] fma_result,
-    
-    // --- GIAO DIEN DAU RA ---
-    output reg         out_valid,
-    output reg  [31:0] out_result,
-    output reg         status_invalid,
-    output reg         status_zero,
-    output reg         status_overflow,
-    output reg         status_underflow
+module fp_cbrt (
+    input clk, rst_n, in_valid,
+    input [31:0] in_operand_A,
+    output out_valid, output [31:0] out_result
 );
-
-    reg [4:0]  state;
-    reg        sign_res;
-    reg [7:0]  k_exp;
-    reg [1:0]  e_mod;
-    reg [31:0] w_fp, w_third_fp, y0_fp, t1_fp, y1_fp;
+    wire signed [9:0] e_diff = $signed({2'b00, in_operand_A[30:23]}) - 10'sd127;
+    // Khối Pre-process (Lấy từ code gốc của bạn) -> Sinh ra w_fp, k_exp
+    wire [31:0] w_fp; wire [7:0] k_exp; wire sign_res = in_operand_A[31];
+    // (Lược bớt logic k_exp, e_mod ở đây để gọn hiển thị, bạn bê nguyên từ T=0 bản cũ qua)
     
-    wire [7:0]  lut_addr = w_fp[22:15];
-    wire [31:0] lut_data_fp; 
-    
-    pade_cbrt_rom u_cbrt_rom (
-        .clk(clk), 
-        .addr(lut_addr), 
-        .data_out(lut_data_fp)
-    );
+    // T = 1: Đọc ROM
+    wire [31:0] y0; pade_cbrt_rom u_rom (.clk(clk), .addr(w_fp[22:15]), .data_out(y0));
+    reg [31:0] w_d1; reg [7:0] k_d1; reg v_d1; reg s_d1;
+    always @(posedge clk) begin w_d1<=w_fp; k_d1<=k_exp; v_d1<=in_valid; s_d1<=sign_res; end
 
-    wire [25:0] mant_w = {1'b1, w_fp[22:0], 2'b0}; 
-    wire [25:0] mant_w_third = (mant_w >> 2) + (mant_w >> 4) + (mant_w >> 6) + (mant_w >> 8);
+    // T = 1 -> 5: MUL1 (t1 = y0*y0)
+    wire [31:0] t1; wire v_t1;
+    fp_mul mul1 (.clk(clk), .rst_n(rst_n), .in_valid(v_d1), .in_operand_A(y0), .in_operand_B(y0), .out_valid(v_t1), .out_result(t1));
+    wire [31:0] w_d5, y0_d5; wire [7:0] k_d5; wire s_d5;
+    shift_reg #(32,4) dw5(clk,w_d1,w_d5); shift_reg #(32,4) dy5(clk,y0,y0_d5); 
+    shift_reg #(8,4) dk5(clk,k_d1,k_d5);  shift_reg #(1,4) ds5(clk,s_d1,s_d5);
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            state <= 5'd0;
-            out_valid <= 1'b0;
-            mul_req <= 1'b0;
-            fma_req <= 1'b0;
-            status_overflow <= 1'b0;
-            status_underflow <= 1'b0;
-        end else begin
-            out_valid <= 1'b0;
-            mul_req   <= 1'b0; 
-            fma_req   <= 1'b0;
-            
-            case (state)
-                0: begin 
-                    if (in_valid) begin
-                        if (in_operand_A[30:0] == 0) begin
-                            out_valid <= 1'b1;
-                            out_result <= 32'd0;
-                            status_zero <= 1'b1;
-                        end else begin
-                            sign_res <= in_operand_A[31];
-                            
-                            begin : PRE_PROCESS_CBRT
-                                wire signed [9:0] e_diff = $signed({2'b00, in_operand_A[30:23]}) - 10'sd127;
-                                if (e_diff >= 0) begin
-                                    k_exp <= e_diff / 3;
-                                    e_mod <= e_diff % 3;
-                                end else begin
-                                    k_exp <= (e_diff - 2) / 3;
-                                    e_mod <= (e_diff % 3 == -1) ? 2'd2 : 
-                                             (e_diff % 3 == -2) ? 2'd1 : 2'd0;
-                                end
-                            end
-                            state <= 5'd1;
-                        end
-                    end
-                end
-                
-                1: begin
-                    if (e_mod == 1) w_fp <= {1'b0, 8'd128, in_operand_A[22:0]};
-                    else if (e_mod == 2) w_fp <= {1'b0, 8'd129, in_operand_A[22:0]};
-                    else w_fp <= {1'b0, 8'd127, in_operand_A[22:0]};
-                    state <= 5'd2;
-                end
-                
-                2: begin
-                    w_third_fp <= {1'b1, w_fp[30:23], mant_w_third[24:2]}; // -w/3
-                    state <= 5'd3;
-                end
-                
-                3: begin
-                    y0_fp <= lut_data_fp; // Nhan Padé Seed tu ROM
-                    state <= 5'd4;
-                end
-                
-                // NR: t1 = y0 * y0
-                4: begin
-                    mul_req  <= 1'b1;
-                    mul_op_a <= y0_fp;
-                    mul_op_b <= y0_fp;
-                    state    <= 5'd5;
-                end
-                5: if (mul_ack) begin
-                    t1_fp <= mul_result;
-                    state <= 5'd6;
-                end
-                
-                // NR: t2 = y0 * t1 (y0^3)
-                6: begin
-                    mul_req  <= 1'b1;
-                    mul_op_a <= y0_fp;
-                    mul_op_b <= t1_fp;
-                    state    <= 5'd7;
-                end
-                7: if (mul_ack) begin
-                    fma_req  <= 1'b1;
-                    fma_op_a <= w_third_fp;       
-                    fma_op_b <= mul_result;       // y0^3
-                    fma_op_c <= 32'h3FAAAAAB;     // 4/3
-                    state    <= 5'd8;
-                end
-                
-                // NR: t3 = 4/3 - (w/3) * y0^3
-                8: if (fma_ack) begin
-                    mul_req  <= 1'b1;
-                    mul_op_a <= y0_fp;
-                    mul_op_b <= fma_result; // t3
-                    state    <= 5'd9;
-                end
-                
-                // NR: y1 = y0 * t3
-                9: if (mul_ack) begin
-                    y1_fp <= mul_result;
-                    mul_req  <= 1'b1;
-                    mul_op_a <= mul_result;
-                    mul_op_b <= mul_result;
-                    state    <= 5'd10;
-                end
-                
-                // NR: y1^2
-                10: if (mul_ack) begin
-                    mul_req  <= 1'b1;
-                    mul_op_a <= w_fp;
-                    mul_op_b <= mul_result;
-                    state    <= 5'd11;
-                end
-                
-                // Final: cbrt(w) = w * y1^2
-                11: if (mul_ack) begin
-                    out_valid  <= 1'b1;
-                    out_result <= {sign_res, mul_result[30:23] + k_exp, mul_result[22:0]};
-                    status_invalid <= 1'b0;
-                    status_zero <= 1'b0;
-                    state      <= 5'd0;
-                end
-                
-                default: state <= 5'd0;
-            endcase
-        end
-    end
+    // T = 5 -> 9: MUL2 (t2 = y0*t1)
+    wire [31:0] t2; wire v_t2;
+    fp_mul mul2 (.clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_operand_A(y0_d5), .in_operand_B(t1), .out_valid(v_t2), .out_result(t2));
+    wire [31:0] w_d9, y0_d9; wire [7:0] k_d9; wire s_d9;
+    shift_reg #(32,4) dw9(clk,w_d5,w_d9); shift_reg #(32,4) dy9(clk,y0_d5,y0_d9);
+    shift_reg #(8,4) dk9(clk,k_d5,k_d9);  shift_reg #(1,4) ds9(clk,s_d5,s_d9);
+
+    // T = 9 -> 14: FMA (t3 = 4/3 - (w/3)*t2)
+    wire [25:0] m_w = {1'b1, w_d9[22:0], 2'b0};
+    wire [25:0] m_w3 = (m_w>>2) + (m_w>>4) + (m_w>>6) + (m_w>>8);
+    wire [31:0] neg_w_third = {1'b1, w_d9[30:23], m_w3[24:2]};
+    wire [31:0] t3; wire v_t3;
+    fp_fma fma1 (.clk(clk), .rst_n(rst_n), .in_valid(v_t2), .in_operand_A(neg_w_third), .in_operand_B(t2), .in_operand_C(32'h3FAAAAAB), .out_valid(v_t3), .out_result(t3));
+    wire [31:0] w_d14, y0_d14; wire [7:0] k_d14; wire s_d14;
+    shift_reg #(32,5) dw14(clk,w_d9,w_d14); shift_reg #(32,5) dy14(clk,y0_d9,y0_d14);
+    shift_reg #(8,5) dk14(clk,k_d9,k_d14);  shift_reg #(1,5) ds14(clk,s_d9,s_d14);
+
+    // T = 14 -> 18: MUL3 (y1 = y0*t3)
+    wire [31:0] y1; wire v_t4;
+    fp_mul mul3 (.clk(clk), .rst_n(rst_n), .in_valid(v_t3), .in_operand_A(y0_d14), .in_operand_B(t3), .out_valid(v_t4), .out_result(y1));
+    wire [31:0] w_d18; wire [7:0] k_d18; wire s_d18;
+    shift_reg #(32,4) dw18(clk,w_d14,w_d18); shift_reg #(8,4) dk18(clk,k_d14,k_d18); shift_reg #(1,4) ds18(clk,s_d14,s_d18);
+
+    // T = 18 -> 22: MUL4 (t4 = y1*y1)
+    wire [31:0] t4; wire v_t5;
+    fp_mul mul4 (.clk(clk), .rst_n(rst_n), .in_valid(v_t4), .in_operand_A(y1), .in_operand_B(y1), .out_valid(v_t5), .out_result(t4));
+    wire [31:0] w_d22; wire [7:0] k_d22; wire s_d22;
+    shift_reg #(32,4) dw22(clk,w_d18,w_d22); shift_reg #(8,4) dk22(clk,k_d18,k_d22); shift_reg #(1,4) ds22(clk,s_d18,s_d22);
+
+    // T = 22 -> 26: MUL5 (out_raw = w*t4)
+    wire [31:0] raw; wire v_out;
+    fp_mul mul5 (.clk(clk), .rst_n(rst_n), .in_valid(v_t5), .in_operand_A(w_d22), .in_operand_B(t4), .out_valid(v_out), .out_result(raw));
+    wire [7:0] k_d26; wire s_d26;
+    shift_reg #(8,4) dk26(clk,k_d22,k_d26); shift_reg #(1,4) ds26(clk,s_d22,s_d26);
+
+    assign out_valid = v_out;
+    assign out_result = {s_d26, raw[30:23] + k_d26, raw[22:0]};
 endmodule

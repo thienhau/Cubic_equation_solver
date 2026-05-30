@@ -18,147 +18,60 @@ module pade_sqrt_rom (
     end
 endmodule
 
-`timescale 1ns / 1ps
-
-module fp_sqrt #(
-    parameter STAGES = 18
-)(
+module fp_sqrt (
     input  wire        clk,
     input  wire        rst_n,
     input  wire        in_valid,
     input  wire [31:0] in_operand_A,
-    
-    // --- GIAO TIEP VOI BO NHAN (FP_MUL) ---
-    output reg         mul_req,       
-    output reg  [31:0] mul_op_a,      
-    output reg  [31:0] mul_op_b,      
-    input  wire        mul_ack,       
-    input  wire [31:0] mul_result,    
-    
-    // --- GIAO TIEP VOI BO FMA (FP_FMA) ---
-    output reg         fma_req,       
-    output reg  [31:0] fma_op_a,
-    output reg  [31:0] fma_op_b,
-    output reg  [31:0] fma_op_c,
-    input  wire        fma_ack,       
-    input  wire [31:0] fma_result,
-    
-    // --- GIAO DIEN DAU RA ---
-    output reg         out_valid,
-    output reg  [31:0] out_result,
-    output reg         status_invalid,
-    output reg         status_zero,
-    output reg         status_overflow,
-    output reg         status_underflow
+    output wire        out_valid,
+    output wire [31:0] out_result
 );
-
-    reg [4:0]  state;
-    reg [31:0] y0_fp, w_fp, t1_fp, y1_fp;
-    reg [7:0]  k_exp;
+    // T = 0: Tiền xử lý
+    wire signed [8:0] e_diff = $signed({1'b0, in_operand_A[30:23]}) - 9'sd127;
+    wire [7:0] k_exp = e_diff >>> 1;
+    wire [31:0] w_fp = (e_diff[0]) ? {1'b0, 8'd128, in_operand_A[22:0]} : {1'b0, 8'd127, in_operand_A[22:0]};
     
-    wire [7:0]  lut_addr = w_fp[22:15];
-    wire [31:0] lut_data_fp; 
+    // T = 1: Đọc ROM 
+    wire [31:0] y0;
+    pade_sqrt_rom u_rom (.clk(clk), .addr(w_fp[22:15]), .data_out(y0));
     
-    pade_sqrt_rom u_rom (
-        .clk(clk), 
-        .addr(lut_addr), 
-        .data_out(lut_data_fp)
-    );
+    reg [31:0] w_d1; reg [7:0] k_d1; reg v_d1;
+    always @(posedge clk) begin w_d1 <= w_fp; k_d1 <= k_exp; v_d1 <= in_valid; end
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            state <= 5'd0;
-            out_valid <= 1'b0;
-            mul_req <= 1'b0;
-            fma_req <= 1'b0;
-            status_overflow <= 1'b0;
-            status_underflow <= 1'b0;
-        end else begin
-            out_valid <= 1'b0;
-            mul_req   <= 1'b0; 
-            fma_req   <= 1'b0;
-            
-            case (state)
-                0: begin 
-                    if (in_valid) begin
-                        if (in_operand_A[31] && in_operand_A[30:0] != 0) begin 
-                            out_valid <= 1'b1;
-                            out_result <= {1'b1, 8'hFF, 23'd1}; // NaN
-                            status_invalid <= 1'b1;
-                        end else if (in_operand_A[30:0] == 0) begin 
-                            out_valid <= 1'b1;
-                            out_result <= 32'd0;
-                            status_zero <= 1'b1;
-                        end else begin
-                            begin : PRE_PROCESS_SQRT
-                                wire signed [8:0] e_diff = $signed({1'b0, in_operand_A[30:23]}) - 9'sd127;
-                                k_exp <= e_diff >>> 1; // Dich phai co dau de chia 2
-                                
-                                if (e_diff[0] == 1'b1) begin
-                                    w_fp <= {1'b0, 8'd128, in_operand_A[22:0]}; // So mu le -> w * 2.0
-                                end else begin
-                                    w_fp <= {1'b0, 8'd127, in_operand_A[22:0]}; // So mu chan -> w * 1.0
-                                end
-                            end
-                            state <= 5'd1;
-                        end
-                    end
-                end
-                
-                1: state <= 5'd2; // Cho ROM
-                
-                2: begin
-                    y0_fp <= lut_data_fp;
-                    state <= 5'd3;
-                end
-                
-                // NR Step 1: t1 = y0 * y0
-                3: begin
-                    mul_req  <= 1'b1;
-                    mul_op_a <= y0_fp;
-                    mul_op_b <= y0_fp;
-                    state    <= 5'd4;
-                end
-                4: if (mul_ack) begin
-                    t1_fp <= mul_result;
-                    state <= 5'd5;
-                end
-                
-                // NR Step 2: FMA -> t2 = 1.5 - 0.5 * w * t1
-                5: begin
-                    fma_req  <= 1'b1;
-                    fma_op_a <= {~w_fp[31], w_fp[30:23] - 8'd1, w_fp[22:0]}; // -0.5 * w
-                    fma_op_b <= t1_fp;
-                    fma_op_c <= 32'h3FC00000; // 1.5 (Float32)
-                    state    <= 5'd6;
-                end
-                6: if (fma_ack) begin
-                    mul_req  <= 1'b1;
-                    mul_op_a <= y0_fp;
-                    mul_op_b <= fma_result; // t2
-                    state    <= 5'd7;
-                end
-                
-                // NR Step 3: y1 = y0 * t2
-                7: if (mul_ack) begin
-                    y1_fp <= mul_result;
-                    mul_req  <= 1'b1;
-                    mul_op_a <= w_fp;
-                    mul_op_b <= mul_result;
-                    state    <= 5'd8;
-                end
-                
-                // Final Step: sqrt(w) = w * y1
-                8: if (mul_ack) begin
-                    out_valid  <= 1'b1;
-                    out_result <= {1'b0, mul_result[30:23] + k_exp, mul_result[22:0]};
-                    status_invalid <= 1'b0;
-                    status_zero <= 1'b0;
-                    state      <= 5'd0;
-                end
-                
-                default: state <= 5'd0;
-            endcase
-        end
-    end
+    // T = 1 -> 5: MUL1 (t1 = y0 * y0)
+    wire [31:0] t1; wire v_t1;
+    fp_mul mul1 (.clk(clk), .rst_n(rst_n), .in_valid(v_d1), .in_operand_A(y0), .in_operand_B(y0), .out_valid(v_t1), .out_result(t1));
+
+    wire [31:0] w_d5, y0_d5; wire [7:0] k_d5;
+    shift_reg #(32, 4) dly_w5 (.clk(clk), .in(w_d1), .out(w_d5));
+    shift_reg #(32, 4) dly_y5 (.clk(clk), .in(y0), .out(y0_d5));
+    shift_reg #(8,  4) dly_k5 (.clk(clk), .in(k_d1), .out(k_d5));
+
+    // T = 5 -> 10: FMA1 (t2 = 1.5 - 0.5 * w * t1)
+    wire [31:0] neg_half_w = {~w_d5[31], w_d5[30:23] - 8'd1, w_d5[22:0]};
+    wire [31:0] t2; wire v_t2;
+    fp_fma fma1 (.clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_operand_A(neg_half_w), .in_operand_B(t1), .in_operand_C(32'h3FC00000), .out_valid(v_t2), .out_result(t2));
+
+    wire [31:0] w_d10, y0_d10; wire [7:0] k_d10;
+    shift_reg #(32, 5) dly_w10 (.clk(clk), .in(w_d5), .out(w_d10));
+    shift_reg #(32, 5) dly_y10 (.clk(clk), .in(y0_d5), .out(y0_d10));
+    shift_reg #(8,  5) dly_k10 (.clk(clk), .in(k_d5), .out(k_d10));
+
+    // T = 10 -> 14: MUL2 (y1 = y0 * t2)
+    wire [31:0] y1; wire v_t3;
+    fp_mul mul2 (.clk(clk), .rst_n(rst_n), .in_valid(v_t2), .in_operand_A(y0_d10), .in_operand_B(t2), .out_valid(v_t3), .out_result(y1));
+
+    wire [31:0] w_d14; wire [7:0] k_d14;
+    shift_reg #(32, 4) dly_w14 (.clk(clk), .in(w_d10), .out(w_d14));
+    shift_reg #(8,  4) dly_k14 (.clk(clk), .in(k_d10), .out(k_d14));
+
+    // T = 14 -> 18: MUL3 (out_raw = w * y1)
+    wire [31:0] sqrt_raw; wire v_out;
+    fp_mul mul3 (.clk(clk), .rst_n(rst_n), .in_valid(v_t3), .in_operand_A(w_d14), .in_operand_B(y1), .out_valid(v_out), .out_result(sqrt_raw));
+
+    wire [7:0] k_d18;
+    shift_reg #(8, 4) dly_k18 (.clk(clk), .in(k_d14), .out(k_d18));
+
+    assign out_valid = v_out;
+    assign out_result = {1'b0, sqrt_raw[30:23] + k_d18, sqrt_raw[22:0]};
 endmodule
