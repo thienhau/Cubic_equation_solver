@@ -15,7 +15,6 @@ module fp_cmp #(
     output reg         cmp_lt,  // A < B
     output reg         status_invalid // A hoặc B là NaN
 );
-
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             out_valid <= 1'b0;
@@ -29,12 +28,14 @@ module fp_cmp #(
                 // Quét NaN (Exponent = toàn 1, Mantissa != 0)
                 if ((&in_operand_A[30:23] && in_operand_A[22:0] != 0) || 
                     (&in_operand_B[30:23] && in_operand_B[22:0] != 0)) begin
-                    cmp_eq <= 1'b0; cmp_gt <= 1'b0; cmp_lt <= 1'b0;
+                    cmp_eq <= 1'b0;
+                    cmp_gt <= 1'b0; cmp_lt <= 1'b0;
                     status_invalid <= 1'b1;
                 end 
                 // Quét trường hợp +0.0 == -0.0
                 else if (in_operand_A[30:0] == 0 && in_operand_B[30:0] == 0) begin
-                    cmp_eq <= 1'b1; cmp_gt <= 1'b0; cmp_lt <= 1'b0;
+                    cmp_eq <= 1'b1;
+                    cmp_gt <= 1'b0; cmp_lt <= 1'b0;
                     status_invalid <= 1'b0;
                 end 
                 // So sánh dấu
@@ -47,7 +48,8 @@ module fp_cmp #(
                 // Cùng dấu: So sánh độ lớn (Magnitude)
                 else begin
                     if (in_operand_A[30:0] == in_operand_B[30:0]) begin
-                        cmp_eq <= 1'b1; cmp_gt <= 1'b0; cmp_lt <= 1'b0;
+                        cmp_eq <= 1'b1;
+                        cmp_gt <= 1'b0; cmp_lt <= 1'b0;
                     end else if (in_operand_A[30:0] > in_operand_B[30:0]) begin
                         cmp_eq <= 1'b0;
                         cmp_gt <= ~in_operand_A[31]; // Cùng dương -> A > B; Cùng âm -> A < B

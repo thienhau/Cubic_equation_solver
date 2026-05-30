@@ -14,15 +14,14 @@ module fp_div #(
     output reg         status_zero,
     output reg         status_invalid
 );
-
     localparam IDLE      = 3'd0;
     localparam ALIGN     = 3'd1;
     localparam SRT_LOOP  = 3'd2;
-    localparam NORM_PACK = 3'd3;
+    localparam WAIT_PAD  = 3'd3;
+    localparam NORM_PACK = 3'd4;
 
     reg [2:0]  state;
     reg [2:0]  loop_cnt;
-    
     reg        sign_res;
     reg [8:0]  exp_res;
     reg [24:0] rem_a;
@@ -38,8 +37,7 @@ module fp_div #(
             status_invalid <= 1'b0;
             loop_cnt <= 3'd0;
         end else begin
-            out_valid <= 1'b0; 
-            
+            out_valid <= 1'b0;
             case (state)
                 IDLE: begin
                     if (in_valid) begin
@@ -54,7 +52,7 @@ module fp_div #(
                         end else begin
                             sign_res <= in_operand_A[31] ^ in_operand_B[31];
                             exp_res  <= in_operand_A[30:23] - in_operand_B[30:23] + 8'd127;
-                            rem_a    <= {2'b01, in_operand_A[22:0]}; 
+                            rem_a    <= {2'b01, in_operand_A[22:0]};
                             div_b    <= {2'b01, in_operand_B[22:0]};
                             quotient <= 26'd0;
                             loop_cnt <= 3'd6; 
@@ -78,7 +76,6 @@ module fp_div #(
                     
                     t_rem = rem_a;
                     t_q = 4'd0;
-                    
                     for (i = 0; i < 4; i = i + 1) begin
                         t_rem = t_rem << 1;
                         if (t_rem >= div_b) begin
@@ -90,6 +87,15 @@ module fp_div #(
                     rem_a <= t_rem;
                     quotient <= {quotient[21:0], t_q};
                     
+                    if (loop_cnt == 3'd1) begin
+                        state <= WAIT_PAD;
+                        loop_cnt <= 3'd5; // Chạy đệm 5 chu kỳ để tổng độ trễ là 14
+                    end else begin
+                        loop_cnt <= loop_cnt - 1;
+                    end
+                end
+
+                WAIT_PAD: begin
                     if (loop_cnt == 3'd1) begin
                         state <= NORM_PACK;
                     end else begin

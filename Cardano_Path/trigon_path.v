@@ -19,12 +19,12 @@ module trigon_path (
     // T=0 -> T=4: num = q * 1.5
     wire [31:0] num; wire v_num;
     fp_mul mul_num(clk, rst_n, in_valid, q, 32'h3FC00000, v_num, num);
-
+    
     // Đồng bộ p chờ val_2 (Đợi 22 chu kỳ) & num chờ denom
     wire [31:0] p_dly22, num_dly22;
     shift_reg #(32, 22) dp22(clk, p, p_dly22);
     shift_reg #(32, 22) dn22(clk, num, num_dly22);
-
+    
     // T=22 -> T=26: denom = p * val_2
     wire [31:0] denom; wire v_den;
     fp_mul mul_den(clk, rst_n, v_v2, p_dly22, val_2, v_den, denom);
@@ -32,7 +32,7 @@ module trigon_path (
     // T=26 -> T=40: arg = num / denom
     wire [31:0] arg_val; wire v_arg;
     fp_div div_arg(clk, rst_n, v_den, num_dly22, denom, v_arg, arg_val);
-
+    
     // T=40 -> T=74: theta = acos(arg)
     wire [31:0] theta; wire v_th;
     fp_acos u_acos(clk, rst_n, v_arg, arg_val, v_th, theta);
@@ -45,7 +45,7 @@ module trigon_path (
     wire [31:0] t2, t3; wire v_t2;
     fp_add_sub add_t2(clk, rst_n, v_t1, 1'b0, t1, 32'hC0060A92, v_t2, t2);
     fp_add_sub add_t3(clk, rst_n, v_t1, 1'b0, t1, 32'hC0860A92, , t3);
-
+    
     // T=78 -> T=111: c1 = cos(t1)
     wire [31:0] c1; wire v_c1;
     fp_cos u_cos1(clk, rst_n, v_t1, t1, v_c1, c1);
@@ -56,16 +56,18 @@ module trigon_path (
     fp_cos u_cos3(clk, rst_n, v_t2, t3, , c3);
 
     // Đồng bộ c1 trễ chờ c2, c3 (Đợi 115 - 111 = 4 chu kỳ)
-    wire [31:0] c1_dly4; shift_reg #(32, 4) dc1(clk, c1, c1_dly4);
+    wire [31:0] c1_dly4;
+    shift_reg #(32, 4) dc1(clk, c1, c1_dly4);
 
     // Tính r = 2 * val_2 (Bằng cách +1 Exponent), cần kéo trễ từ T=22 đến T=115 (93 cycles)
     wire [31:0] r = {val_2[31], val_2[30:23] + 8'd1, val_2[22:0]};
     wire [31:0] r_dly93; shift_reg #(32, 93) dr93(clk, r, r_dly93);
     
     // Đồng bộ offset từ T=0 đến T=115
-    wire [31:0] off_dly115; shift_reg #(32, 115) doff(clk, offset, off_dly115);
+    wire [31:0] off_dly115;
+    shift_reg #(32, 115) doff(clk, offset, off_dly115);
     wire [31:0] neg_off = {~off_dly115[31], off_dly115[30:0]};
-
+    
     // T=115 -> T=120: x = r * c + (-offset)
     fp_fma fma_x1(clk, rst_n, v_c2, r_dly93, c1_dly4, neg_off, out_valid, x1);
     fp_fma fma_x2(clk, rst_n, v_c2, r_dly93, c2, neg_off, , x2);
