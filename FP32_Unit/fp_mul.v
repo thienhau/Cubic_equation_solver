@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 module fp_mul #(
-    parameter STAGES = 4 // Pipeline 4-stage cho nhan FP32
+    parameter STAGES = 4
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -16,10 +16,7 @@ module fp_mul #(
     output reg         status_invalid,
     output reg         status_zero
 );
-
-    // ==========================================
-    // STAGE 1: Giải Mã & Chuẩn Bị Số Mũ
-    // ==========================================
+    // T = 0 -> 1: Giải mã và chuẩn bị số mũ
     reg        s1_valid;
     reg        s1_sign;
     reg [8:0]  s1_exp; 
@@ -31,10 +28,8 @@ module fp_mul #(
             s1_valid <= 1'b0;
             s1_sign <= 1'b0;
             s1_exp <= 9'd0;
-            s1_mant_A <= 24'd0;
-            s1_mant_B <= 24'd0;
-            s1_is_zero <= 1'b0;
-            s1_is_nan_inf <= 1'b0;
+            s1_mant_A <= 24'd0; s1_mant_B <= 24'd0;
+            s1_is_zero <= 1'b0; s1_is_nan_inf <= 1'b0;
         end else begin
             s1_valid <= in_valid;
             if (in_valid) begin
@@ -50,9 +45,7 @@ module fp_mul #(
         end
     end
 
-    // ==========================================
-    // STAGE 2: Mạch Nhân (Mapped to DSP48E1 Booth/Wallace)
-    // ==========================================
+    // T = 1 -> 2: Nhân phần định trị (Mantissa)
     reg        s2_valid;
     reg        s2_sign;
     reg [8:0]  s2_exp;
@@ -63,6 +56,8 @@ module fp_mul #(
         if (!rst_n) begin
             s2_valid <= 1'b0;
             s2_mant_mult <= 48'd0;
+            s2_sign <= 1'b0; s2_exp <= 9'd0;
+            s2_is_zero <= 1'b0; s2_is_nan_inf <= 1'b0;
         end else begin
             s2_valid <= s1_valid;
             s2_sign  <= s1_sign;
@@ -70,13 +65,11 @@ module fp_mul #(
             s2_is_zero <= s1_is_zero;
             s2_is_nan_inf <= s1_is_nan_inf;
             
-            s2_mant_mult <= s1_mant_A * s1_mant_B; 
+            s2_mant_mult <= s1_mant_A * s1_mant_B;
         end
     end
 
-    // ==========================================
-    // STAGE 3: CPA & LZA (Chuẩn bị dịch bit)
-    // ==========================================
+    // T = 2 -> 3: Phân tích chuẩn hóa (Norm Shift Anticipation)
     reg        s3_valid;
     reg        s3_sign;
     reg [8:0]  s3_exp;
@@ -88,6 +81,9 @@ module fp_mul #(
         if (!rst_n) begin
             s3_valid <= 1'b0;
             s3_mant_res <= 48'd0;
+            s3_sign <= 1'b0; s3_exp <= 9'd0;
+            s3_norm_shift <= 1'b0;
+            s3_is_zero <= 1'b0; s3_is_nan_inf <= 1'b0;
         end else begin
             s3_valid <= s2_valid;
             s3_sign  <= s2_sign;
@@ -100,17 +96,13 @@ module fp_mul #(
         end
     end
 
-    // ==========================================
-    // STAGE 4: Normalize, Round to Nearest & Pack
-    // ==========================================
+    // T = 3 -> 4: Chuẩn hóa, làm tròn và đóng gói
     wire [47:0] norm_mant = s3_norm_shift ? (s3_mant_res << 1) : s3_mant_res;
     wire [8:0]  norm_exp  = s3_norm_shift ? (s3_exp - 1) : s3_exp;
-    
     wire guard_bit  = norm_mant[23];
     wire round_bit  = norm_mant[22];
     wire sticky_bit = |norm_mant[21:0];
     wire round_up   = guard_bit & (round_bit | sticky_bit | norm_mant[24]);
-    
     wire [23:0] rounded_mant = norm_mant[47:24] + round_up;
 
     always @(posedge clk or negedge rst_n) begin
@@ -125,14 +117,14 @@ module fp_mul #(
             out_valid <= s3_valid;
             if (s3_valid) begin
                 if (s3_is_nan_inf) begin
-                    out_result <= {s3_sign, 8'hFF, 23'd0}; 
+                    out_result <= {s3_sign, 8'hFF, 23'd0};
                     status_invalid <= 1'b1;
                 end else if (s3_is_zero || norm_exp[8]) begin 
-                    out_result <= {s3_sign, 31'd0}; 
+                    out_result <= {s3_sign, 31'd0};
                     status_underflow <= ~s3_is_zero;
                     status_zero <= s3_is_zero;
                 end else if (norm_exp >= 9'd255) begin
-                    out_result <= {s3_sign, 8'hFF, 23'd0}; 
+                    out_result <= {s3_sign, 8'hFF, 23'd0};
                     status_overflow <= 1'b1;
                 end else begin
                     out_result <= {s3_sign, norm_exp[7:0], rounded_mant[22:0]};

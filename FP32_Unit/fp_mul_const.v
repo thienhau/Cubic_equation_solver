@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
-module fp_mul_const_one_third #(
-    parameter STAGES = 2 // 2-stage pipeline rut gon
+module fp_mul_const #(
+    parameter STAGES = 2
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -11,25 +11,21 @@ module fp_mul_const_one_third #(
     output reg         out_valid,
     output reg  [31:0] out_result
 );
-
     wire        in_sign = in_operand_A[31];
     wire [7:0]  in_exp  = in_operand_A[30:23];
     wire [23:0] in_mant = {1'b1, in_operand_A[22:0]};
 
-    // ==========================================
-    // STAGE 1: Dịch bit cứng & Cộng Tầng 1
-    // ==========================================
+    // T = 0 -> 1: Dịch bit cứng và cộng tầng 1
     reg        s1_valid;
     reg        s1_sign;
     reg [7:0]  s1_exp;
     reg [25:0] s1_sum_A, s1_sum_B, s1_sum_C;
-    
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s1_valid <= 1'b0;
-            s1_sum_A <= 26'd0; 
-            s1_sum_B <= 26'd0;
-            s1_sum_C <= 26'd0;
+            s1_sign <= 1'b0; s1_exp <= 8'd0;
+            s1_sum_A <= 26'd0; s1_sum_B <= 26'd0; s1_sum_C <= 26'd0;
         end else begin
             s1_valid <= in_valid;
             s1_sign  <= in_sign;
@@ -45,11 +41,9 @@ module fp_mul_const_one_third #(
         end
     end
 
-    // ==========================================
-    // STAGE 2: Cộng Tầng Cuối & Đóng gói
-    // ==========================================
+    // T = 1 -> 2: Cộng tầng cuối và đóng gói
     wire [25:0] final_mant_sum = s1_sum_A + s1_sum_B + s1_sum_C;
-    
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             out_valid <= 1'b0;

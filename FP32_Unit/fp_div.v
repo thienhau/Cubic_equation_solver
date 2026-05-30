@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 module fp_div #(
-    parameter STAGES = 14 // Latency 14 chu ky co dinh
+    parameter STAGES = 14
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -28,6 +28,7 @@ module fp_div #(
     reg [24:0] div_b;
     reg [25:0] quotient;
 
+    // T = 0 -> 14: Thực hiện khởi tạo, dịch căn lề, chia SRT và chuẩn hóa
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
@@ -40,6 +41,7 @@ module fp_div #(
             out_valid <= 1'b0;
             case (state)
                 IDLE: begin
+                    // T = 0 -> 1: Khởi tạo
                     if (in_valid) begin
                         if (~|in_operand_B[30:23]) begin 
                             out_valid <= 1'b1;
@@ -62,6 +64,7 @@ module fp_div #(
                 end
                 
                 ALIGN: begin
+                    // T = 1 -> 2: Căn lề sơ bộ
                     if (rem_a >= div_b) begin
                         rem_a <= rem_a - div_b;
                         quotient[0] <= 1'b1;
@@ -70,6 +73,7 @@ module fp_div #(
                 end
                 
                 SRT_LOOP: begin
+                    // T = 2 -> 8: Vòng lặp chia Radix-16
                     reg [24:0] t_rem;
                     reg [3:0]  t_q;
                     integer i;
@@ -89,13 +93,14 @@ module fp_div #(
                     
                     if (loop_cnt == 3'd1) begin
                         state <= WAIT_PAD;
-                        loop_cnt <= 3'd5; // Chạy đệm 5 chu kỳ để tổng độ trễ là 14
+                        loop_cnt <= 3'd5; 
                     end else begin
                         loop_cnt <= loop_cnt - 1;
                     end
                 end
 
                 WAIT_PAD: begin
+                    // T = 8 -> 13: Đệm chu kỳ chờ
                     if (loop_cnt == 3'd1) begin
                         state <= NORM_PACK;
                     end else begin
@@ -104,6 +109,7 @@ module fp_div #(
                 end
                 
                 NORM_PACK: begin
+                    // T = 13 -> 14: Đóng gói
                     out_valid <= 1'b1;
                     status_zero <= 1'b0;
                     status_invalid <= 1'b0;

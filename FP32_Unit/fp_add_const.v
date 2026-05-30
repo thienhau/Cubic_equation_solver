@@ -2,7 +2,7 @@
 
 module fp_add_const #(
     parameter STAGES = 2,
-    parameter [31:0] FLOAT_CONST = 32'h3F800000 // Hằng số tĩnh mặc định là +1.0
+    parameter [31:0] FLOAT_CONST = 32'h3F800000
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -12,14 +12,11 @@ module fp_add_const #(
     output reg         out_valid,
     output reg  [31:0] out_result
 );
-
     wire        const_sign = FLOAT_CONST[31];
     wire [7:0]  const_exp  = FLOAT_CONST[30:23];
     wire [23:0] const_mant = {1'b1, FLOAT_CONST[22:0]};
 
-    // ==========================================
-    // STAGE 1: Căn lề số nhỏ dựa trên Exponent
-    // ==========================================
+    // T = 0 -> 1: Căn lề số nhỏ dựa trên Exponent
     reg s1_valid;
     reg s1_sign_res;
     reg [7:0] s1_exp_max;
@@ -28,7 +25,9 @@ module fp_add_const #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s1_valid <= 1'b0;
-            // reset...
+            s1_sign_res <= 1'b0;
+            s1_exp_max <= 8'd0;
+            s1_sum <= 25'd0;
         end else begin
             s1_valid <= in_valid;
             if (in_valid) begin
@@ -36,8 +35,6 @@ module fp_add_const #(
                 wire [7:0] in_exp = in_operand_A[30:23];
                 wire [23:0] in_mant = (|in_exp) ? {1'b1, in_operand_A[22:0]} : 24'd0;
                 
-                // Logic gọt đẽo: Trình tổng hợp sẽ biết 'const_exp' là hằng số
-                // và tối ưu mạch trừ số mũ thành 1 bộ adder tĩnh.
                 if (in_operand_A[30:0] >= FLOAT_CONST[30:0]) begin
                     s1_sign_res <= in_sign;
                     s1_exp_max  <= in_exp;
@@ -59,9 +56,7 @@ module fp_add_const #(
         end
     end
 
-    // ==========================================
-    // STAGE 2: LZA Tĩnh & Đóng Gói
-    // ==========================================
+    // T = 1 -> 2: LZA Tĩnh và đóng gói
     integer i;
     reg [4:0] lza_shift;
     
@@ -74,7 +69,7 @@ module fp_add_const #(
             if (s1_valid) begin
                 if (s1_sum == 0) begin
                     out_result <= 32'd0;
-                end else if (s1_sum[24]) begin // Carry out
+                end else if (s1_sum[24]) begin 
                     out_result <= {s1_sign_res, s1_exp_max + 8'd1, s1_sum[23:1]};
                 end else begin
                     lza_shift = 0;
@@ -84,7 +79,6 @@ module fp_add_const #(
                             break;
                         end
                     end
-                    
                     wire [23:0] norm_mant = s1_sum[23:0] << lza_shift;
                     out_result <= {s1_sign_res, s1_exp_max - lza_shift, norm_mant[22:0]};
                 end
