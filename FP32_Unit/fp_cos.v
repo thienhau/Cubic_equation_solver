@@ -11,8 +11,9 @@ module fp_cos #(
     output wire        out_valid, 
     output wire [31:0] out_result
 );
-    localparam N3 = 32'h00000000; localparam N2 = 32'h39A9953A; localparam N1 = 32'hBEE9A6B3; localparam N0 = 32'h3F800000;
-    localparam D3 = 32'h00000000; localparam D2 = 32'h3A66CC62; localparam D1 = 32'h3D32CB2B; localparam D0 = 32'h3F800000;
+    // BỘ HỆ SỐ CHUẨN IEEE-754 CHO COS(X)
+    localparam N3 = 32'h00000000; localparam N2 = 32'h3CA9953B; localparam N1 = 32'hBEE9A6B3; localparam N0 = 32'h3F800000;
+    localparam D3 = 32'h00000000; localparam D2 = 32'h3A616539; localparam D1 = 32'h3D32CB2B; localparam D0 = 32'h3F800000;
 
     // T = 0 -> 4: z = x*x
     wire [31:0] z; wire v_z;

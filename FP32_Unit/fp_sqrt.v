@@ -16,19 +16,35 @@ module fp_sqrt #(
     wire [7:0] k_exp = e_diff >>> 1;
     wire [31:0] w_fp = (e_diff[0]) ? {1'b0, 8'd128, in_operand_A[22:0]} : {1'b0, 8'd127, in_operand_A[22:0]};
     
-    wire [31:0] y0;
+    wire [31:0] y0_rom;
     pade_sqrt_rom u_rom (
         .clk(clk), 
         .addr(w_fp[22:15]), 
-        .data_out(y0)
+        .data_out(y0_rom)
     );
     
     reg [31:0] w_d1; reg [7:0] k_d1; reg v_d1;
+    reg e_odd_d1; // THÊM BIẾN LƯU TRẠNG THÁI MŨ LẺ
     always @(posedge clk) begin 
-        w_d1 <= w_fp; 
+        w_d1 <= w_fp;
         k_d1 <= k_exp;
         v_d1 <= in_valid; 
+        e_odd_d1 <= e_diff[0];
     end
+
+    // --- SCALE INITIAL GUESS CHO MŨ LẺ ---
+    wire [25:0] m_y0 = {1'b1, y0_rom[22:0], 2'b0};
+    
+    // Hệ số 0.70703125 (Xấp xỉ 1/sqrt(2) = 1/2 + 1/8 + 1/16 + 1/64 + 1/256)
+    wire [25:0] y0_scaled_odd = (m_y0 >> 1) + (m_y0 >> 3) + (m_y0 >> 4) + (m_y0 >> 6) + (m_y0 >> 8);
+    wire [25:0] y0_scaled = e_odd_d1 ? y0_scaled_odd : m_y0;
+    
+    // Chuẩn hóa lại dạng Float 32
+    wire shift_req = ~y0_scaled[25];
+    wire [22:0] final_y0_mant = shift_req ? y0_scaled[23:1] : y0_scaled[24:2];
+    wire [7:0]  final_y0_exp  = y0_rom[30:23] - shift_req;
+    
+    wire [31:0] y0 = {y0_rom[31], final_y0_exp, final_y0_mant};
 
     // T = 1 -> 5: MUL1 (t1 = y0 * y0)
     wire [31:0] t1; wire v_t1;
@@ -84,6 +100,10 @@ module fp_sqrt #(
     wire [7:0] k_d18;
     shift_reg #(.W(8), .D(4)) dly_k18 (.clk(clk), .in(k_d14), .out(k_d18));
 
+    // BYPASS số 0 để tránh văng rác
+    wire z_d18;
+    shift_reg #(.W(1), .D(18)) dly_z (.clk(clk), .in(~|in_operand_A[30:23]), .out(z_d18));
+
     assign out_valid = v_out;
-    assign out_result = {1'b0, sqrt_raw[30:23] + k_d18, sqrt_raw[22:0]};
+    assign out_result = z_d18 ? 32'd0 : {1'b0, sqrt_raw[30:23] + k_d18, sqrt_raw[22:0]};
 endmodule
