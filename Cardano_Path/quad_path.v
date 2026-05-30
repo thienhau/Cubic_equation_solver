@@ -35,8 +35,8 @@ module quad_path #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    wire [31:0] c_dly30;
-    shift_reg #(.W(32), .D(30)) dly_c (.clk(clk), .in(c), .out(c_dly30));
+    wire [31:0] c_dly31;
+    shift_reg #(.W(32), .D(31)) dly_c (.clk(clk), .in(c), .out(c_dly31));
     
     wire [31:0] b2_dly34;
     shift_reg #(.W(32), .D(30)) dly_b2 (.clk(clk), .in(b2), .out(b2_dly34));
@@ -71,7 +71,7 @@ module quad_path #(
     );
 
     // T = 30 -> 34: Tính Tử số (-c + sqrt_D) và (-c - sqrt_D)
-    wire [31:0] neg_c = {~c_dly30[31], c_dly30[30:0]};
+    wire [31:0] neg_c = {~c_dly31[31], c_dly31[30:0]};
     wire [31:0] num1, num2; wire v_t34;
     fp_add_sub u_add_num1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t30), .in_is_sub(1'b0), 

@@ -98,7 +98,7 @@ module fp_mul #(
 
     // T = 3 -> 4: Chuẩn hóa, làm tròn và đóng gói
     wire [47:0] norm_mant = s3_norm_shift ? (s3_mant_res << 1) : s3_mant_res;
-    wire [8:0]  norm_exp  = s3_norm_shift ? (s3_exp - 1) : s3_exp;
+    wire [8:0]  norm_exp  = s3_norm_shift ? s3_exp : (s3_exp + 1);
     wire guard_bit  = norm_mant[23];
     wire round_bit  = norm_mant[22];
     wire sticky_bit = |norm_mant[21:0];

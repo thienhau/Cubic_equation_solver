@@ -34,9 +34,10 @@ module cardano_top #(
     shift_reg #(.W(32), .D(52)) dly_d52 (.clk(clk), .in(d), .out(d_52));
 
     // T = 0 -> 14: Khối tính 1/a
-    wire [31:0] inv_a; wire v14;
-    fp_div u_div_a (.clk(clk), .rst_n(rst_n), .in_valid(valid_in), .in_operand_A(32'h3F800000), .in_operand_B(a), .out_valid(v14), .out_result(inv_a));
-    
+    wire [31:0] inv_a;
+    wire v14;
+    fp_div u_div_a (.clk(clk), .rst_n(rst_n), .in_valid(valid_in), .in_operand_A(32'h3F800000), .in_operand_B(a), .out_valid(v14), .out_result(inv_a), .status_zero(), .status_invalid());
+
     // T = 0 -> 14: Delay hệ số chờ chia
     wire [31:0] b14, c14, d14;
     shift_reg #(.W(32), .D(14)) d14_b (.clk(clk), .in(b), .out(b14));
@@ -44,15 +45,17 @@ module cardano_top #(
     shift_reg #(.W(32), .D(14)) d14_d (.clk(clk), .in(d), .out(d14));
 
     // T = 14 -> 18: Khối A, B, C
-    wire [31:0] A_coef, B_coef, C_coef; wire v18;
-    fp_mul u_mul_A (.clk(clk), .rst_n(rst_n), .in_valid(v14), .in_operand_A(b14), .in_operand_B(inv_a), .out_valid(v18), .out_result(A_coef));
-    fp_mul u_mul_B (.clk(clk), .rst_n(rst_n), .in_valid(v14), .in_operand_A(c14), .in_operand_B(inv_a), .out_valid(), .out_result(B_coef));
-    fp_mul u_mul_C (.clk(clk), .rst_n(rst_n), .in_valid(v14), .in_operand_A(d14), .in_operand_B(inv_a), .out_valid(), .out_result(C_coef));
+    wire [31:0] A_coef, B_coef, C_coef;
+    wire v18;
+    fp_mul u_mul_A (.clk(clk), .rst_n(rst_n), .in_valid(v14), .in_operand_A(b14), .in_operand_B(inv_a), .out_valid(v18), .out_result(A_coef), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_mul u_mul_B (.clk(clk), .rst_n(rst_n), .in_valid(v14), .in_operand_A(c14), .in_operand_B(inv_a), .out_valid(), .out_result(B_coef), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_mul u_mul_C (.clk(clk), .rst_n(rst_n), .in_valid(v14), .in_operand_A(d14), .in_operand_B(inv_a), .out_valid(), .out_result(C_coef), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
 
     // T = 18 -> 20: Khối S
-    wire [31:0] S_val; wire v20;
+    wire [31:0] S_val;
+    wire v20;
     fp_mul_const u_mul_S (.clk(clk), .rst_n(rst_n), .in_valid(v18), .in_operand_A(A_coef), .out_valid(v20), .out_result(S_val));
-    
+
     // T = 18 -> 20: Delay B, C
     wire [31:0] B20, C20;
     shift_reg #(.W(32), .D(2)) d20_B (.clk(clk), .in(B_coef), .out(B20));
@@ -60,9 +63,9 @@ module cardano_top #(
 
     // T = 20 -> 24: Khối S2, SB
     wire [31:0] S2, SB; wire v24;
-    fp_mul u_mul_S2 (.clk(clk), .rst_n(rst_n), .in_valid(v20), .in_operand_A(S_val), .in_operand_B(S_val), .out_valid(v24), .out_result(S2));
-    fp_mul u_mul_SB (.clk(clk), .rst_n(rst_n), .in_valid(v20), .in_operand_A(S_val), .in_operand_B(B20), .out_valid(), .out_result(SB));
-    
+    fp_mul u_mul_S2 (.clk(clk), .rst_n(rst_n), .in_valid(v20), .in_operand_A(S_val), .in_operand_B(S_val), .out_valid(v24), .out_result(S2), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_mul u_mul_SB (.clk(clk), .rst_n(rst_n), .in_valid(v20), .in_operand_A(S_val), .in_operand_B(B20), .out_valid(), .out_result(SB), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+
     // T = 20 -> 24: Delay S, B, C
     wire [31:0] S24, B24, C24;
     shift_reg #(.W(32), .D(4)) d24_S (.clk(clk), .in(S_val), .out(S24));
@@ -70,28 +73,31 @@ module cardano_top #(
     shift_reg #(.W(32), .D(4)) d24_C (.clk(clk), .in(C20), .out(C24));
 
     // T = 24 -> 28: Khối S3, 3S2, C-SB
-    wire [31:0] S3, mul_3S2, C_minus_SB; wire v28;
-    fp_mul u_mul_S3 (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_operand_A(S2), .in_operand_B(S24), .out_valid(v28), .out_result(S3));
-    fp_mul u_mul_3S2 (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_operand_A(S2), .in_operand_B(32'h40400000), .out_valid(), .out_result(mul_3S2));
-    fp_add_sub u_sub_C_SB (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_is_sub(1'b1), .in_operand_A(C24), .in_operand_B(SB), .out_valid(), .out_result(C_minus_SB));
-    
+    wire [31:0] S3, mul_3S2, C_minus_SB;
+    wire v28;
+    fp_mul u_mul_S3 (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_operand_A(S2), .in_operand_B(S24), .out_valid(v28), .out_result(S3), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_mul u_mul_3S2 (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_operand_A(S2), .in_operand_B(32'h40400000), .out_valid(), .out_result(mul_3S2), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_add_sub u_sub_C_SB (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_is_sub(1'b1), .in_operand_A(C24), .in_operand_B(SB), .out_valid(), .out_result(C_minus_SB), .status_overflow(), .status_zero());
+
     // T = 24 -> 28: Delay B
     wire [31:0] B28;
     shift_reg #(.W(32), .D(4)) d28_B (.clk(clk), .in(B24), .out(B28));
 
     // T = 28 -> 32: Khối p, 2S3
-    wire [31:0] p_val_int, mul_2S3; wire v32;
-    fp_add_sub u_sub_p (.clk(clk), .rst_n(rst_n), .in_valid(v28), .in_is_sub(1'b1), .in_operand_A(B28), .in_operand_B(mul_3S2), .out_valid(v32), .out_result(p_val_int));
-    fp_mul u_mul_2S3 (.clk(clk), .rst_n(rst_n), .in_valid(v28), .in_operand_A(S3), .in_operand_B(32'h40000000), .out_valid(), .out_result(mul_2S3));
+    wire [31:0] p_val_int, mul_2S3;
+    wire v32;
+    fp_add_sub u_sub_p (.clk(clk), .rst_n(rst_n), .in_valid(v28), .in_is_sub(1'b1), .in_operand_A(B28), .in_operand_B(mul_3S2), .out_valid(v32), .out_result(p_val_int), .status_overflow(), .status_zero());
+    fp_mul u_mul_2S3 (.clk(clk), .rst_n(rst_n), .in_valid(v28), .in_operand_A(S3), .in_operand_B(32'h40000000), .out_valid(), .out_result(mul_2S3), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
     
     // T = 28 -> 32: Delay C_minus_SB
     wire [31:0] C_minus_SB32;
     shift_reg #(.W(32), .D(4)) d32_C_SB (.clk(clk), .in(C_minus_SB), .out(C_minus_SB32));
 
     // T = 32 -> 36: Khối q
-    wire [31:0] q_val_int; wire v36;
-    fp_add_sub u_add_q (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_is_sub(1'b0), .in_operand_A(mul_2S3), .in_operand_B(C_minus_SB32), .out_valid(v36), .out_result(q_val_int));
-    
+    wire [31:0] q_val_int;
+    wire v36;
+    fp_add_sub u_add_q (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_is_sub(1'b0), .in_operand_A(mul_2S3), .in_operand_B(C_minus_SB32), .out_valid(v36), .out_result(q_val_int), .status_overflow(), .status_zero());
+
     // T = 32 -> 34: Khối p/3
     wire [31:0] p_3; wire v34;
     fp_mul_const u_mul_p3 (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_operand_A(p_val_int), .out_valid(v34), .out_result(p_3));
@@ -101,34 +107,38 @@ module cardano_top #(
     shift_reg #(.W(32), .D(2)) d36_p3 (.clk(clk), .in(p_3), .out(p_3_36));
 
     // T = 36 -> 40: Khối q/2
-    wire [31:0] q_2; wire v40;
-    fp_mul u_mul_q2 (.clk(clk), .rst_n(rst_n), .in_valid(v36), .in_operand_A(q_val_int), .in_operand_B(32'h3F000000), .out_valid(v40), .out_result(q_2));
-    
+    wire [31:0] q_2;
+    wire v40;
+    fp_mul u_mul_q2 (.clk(clk), .rst_n(rst_n), .in_valid(v36), .in_operand_A(q_val_int), .in_operand_B(32'h3F000000), .out_valid(v40), .out_result(q_2), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+
     // T = 36 -> 40: Delay p/3
     wire [31:0] p_3_40;
     shift_reg #(.W(32), .D(4)) d40_p3 (.clk(clk), .in(p_3_36), .out(p_3_40));
 
     // T = 40 -> 44: Khối (q/2)^2 và (p/3)^2
-    wire [31:0] q_2_sq, p_3_sq; wire v44;
-    fp_mul u_mul_q2_sq (.clk(clk), .rst_n(rst_n), .in_valid(v40), .in_operand_A(q_2), .in_operand_B(q_2), .out_valid(v44), .out_result(q_2_sq));
-    fp_mul u_mul_p3_sq (.clk(clk), .rst_n(rst_n), .in_valid(v40), .in_operand_A(p_3_40), .in_operand_B(p_3_40), .out_valid(), .out_result(p_3_sq));
-    
+    wire [31:0] q_2_sq, p_3_sq;
+    wire v44;
+    fp_mul u_mul_q2_sq (.clk(clk), .rst_n(rst_n), .in_valid(v40), .in_operand_A(q_2), .in_operand_B(q_2), .out_valid(v44), .out_result(q_2_sq), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_mul u_mul_p3_sq (.clk(clk), .rst_n(rst_n), .in_valid(v40), .in_operand_A(p_3_40), .in_operand_B(p_3_40), .out_valid(), .out_result(p_3_sq), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+
     // T = 40 -> 44: Delay p/3
     wire [31:0] p_3_44;
     shift_reg #(.W(32), .D(4)) d44_p3 (.clk(clk), .in(p_3_40), .out(p_3_44));
 
     // T = 44 -> 48: Khối (p/3)^3
-    wire [31:0] p_3_cb; wire v48;
-    fp_mul u_mul_p3_cb (.clk(clk), .rst_n(rst_n), .in_valid(v44), .in_operand_A(p_3_sq), .in_operand_B(p_3_44), .out_valid(v48), .out_result(p_3_cb));
-    
+    wire [31:0] p_3_cb;
+    wire v48;
+    fp_mul u_mul_p3_cb (.clk(clk), .rst_n(rst_n), .in_valid(v44), .in_operand_A(p_3_sq), .in_operand_B(p_3_44), .out_valid(v48), .out_result(p_3_cb), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+
     // T = 44 -> 48: Delay (q/2)^2
     wire [31:0] q_2_sq_48;
     shift_reg #(.W(32), .D(4)) d48_q2_sq (.clk(clk), .in(q_2_sq), .out(q_2_sq_48));
 
     // T = 48 -> 52: Khối Delta
-    wire [31:0] delta_val_int; wire v52_delta;
-    fp_add_sub u_add_delta (.clk(clk), .rst_n(rst_n), .in_valid(v48), .in_is_sub(1'b0), .in_operand_A(q_2_sq_48), .in_operand_B(p_3_cb), .out_valid(v52_delta), .out_result(delta_val_int));
-    
+    wire [31:0] delta_val_int;
+    wire v52_delta;
+    fp_add_sub u_add_delta (.clk(clk), .rst_n(rst_n), .in_valid(v48), .in_is_sub(1'b0), .in_operand_A(q_2_sq_48), .in_operand_B(p_3_cb), .out_valid(v52_delta), .out_result(delta_val_int), .status_overflow(), .status_zero());
+
     // T = 32 -> 52: Delay p
     wire pre_valid_out = v52;
     wire [31:0] p_val;
@@ -165,29 +175,36 @@ module cardano_top #(
     wire en_radic  = pre_valid_out & ~is_quad_52 & delta_is_pos;
     wire en_trigon = pre_valid_out & ~is_quad_52 & ~delta_is_pos;
 
-    // T = 52 -> 52: Pop siêu dữ liệu phát lệnh
-    assign fifo_pop = pre_valid_out; 
-
+    // T = 52 -> *: Pop siêu dữ liệu phát lệnh
+    assign fifo_pop = pre_valid_out;
+    
     // T = 52 -> 100: Nhánh 1 Bậc 2 (48 Chu kỳ)
-    wire v_quad; wire [31:0] q_x1, q_x2;
+    wire v_quad;
+    wire [31:0] q_x1, q_x2;
     quad_path u_quad (.clk(clk), .rst_n(rst_n), .in_valid(en_quad), .b(b_52), .c(c_52), .d(d_52), .out_valid(v_quad), .x1(q_x1), .x2(q_x2));
     
     wire [7:0] id_quad_out;
+    // GIỮ NGUYÊN 48 DO QUAD ĐÃ CHẠY ĐỒNG BỘ NỘI BỘ
     shift_reg #(.W(8), .D(48)) dly_id_q (.clk(clk), .in(id_52), .out(id_quad_out));
 
     // T = 52 -> 108: Nhánh 2 Radic (56 Chu kỳ)
-    wire v_radic; wire [31:0] r_x1;
+    wire v_radic;
+    wire [31:0] r_x1;
     radic_path u_radic (.clk(clk), .rst_n(rst_n), .in_valid(en_radic), .p(p_val), .q(q_val), .delta(delta_val), .offset(offset_val), .out_valid(v_radic), .x1(r_x1));
     
     wire [7:0] id_radic_out;
+    // GIỮ NGUYÊN 56 CHU KỲ (Nếu bạn chưa áp dụng tọa độ phức)
     shift_reg #(.W(8), .D(56)) dly_id_r (.clk(clk), .in(id_52), .out(id_radic_out));
 
     // T = 52 -> 173: Nhánh 3 Trigon (121 Chu kỳ)
-    wire v_trigon; wire [31:0] t_x1, t_x2, t_x3;
+    wire v_trigon;
+    wire [31:0] t_x1, t_x2, t_x3;
     trigon_path u_trigon (.clk(clk), .rst_n(rst_n), .in_valid(en_trigon), .p(p_val), .q(q_val), .offset(offset_val), .out_valid(v_trigon), .x1(t_x1), .x2(t_x2), .x3(t_x3));
     
     wire [7:0] id_trigon_out;
-    shift_reg #(.W(8), .D(121)) dly_id_t (.clk(clk), .in(id_52), .out(id_trigon_out));
+    // SỬA CHỖ NÀY: Do FMA ở cuối Trigon_path có trễ 5 cycles, nên độ trễ tổng của nhánh này thực chất là 122 chu kỳ. 
+    // Chúng ta phải tăng lên 122 để lấy được đúng nghiệm, không bị rác (00000000 hay vô cực).
+    shift_reg #(.W(8), .D(122)) dly_id_t (.clk(clk), .in(id_52), .out(id_trigon_out));
 
     // T = * -> *: Bộ trọng tài Out-of-Order (Output Arbiter) kèm FIFOs
     wire quad_empty, radic_empty, trigon_empty;
@@ -198,12 +215,10 @@ module cardano_top #(
         .clk(clk), .rst_n(rst_n), .push(v_quad), .pop(pop_quad),
         .data_in({id_quad_out, 2'd2, q_x1, q_x2, 32'd0}), .data_out(quad_data_out), .empty(quad_empty), .full()
     );
-
     sync_fifo_bypass #(.DATA_WIDTH(106), .DEPTH_LOG2(4)) fifo_radic (
         .clk(clk), .rst_n(rst_n), .push(v_radic), .pop(pop_radic),
         .data_in({id_radic_out, 2'd1, r_x1, 32'd0, 32'd0}), .data_out(radic_data_out), .empty(radic_empty), .full()
     );
-
     sync_fifo_bypass #(.DATA_WIDTH(106), .DEPTH_LOG2(4)) fifo_trigon (
         .clk(clk), .rst_n(rst_n), .push(v_trigon), .pop(pop_trigon),
         .data_in({id_trigon_out, 2'd3, t_x1, t_x2, t_x3}), .data_out(trigon_data_out), .empty(trigon_empty), .full()
