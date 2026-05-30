@@ -27,11 +27,11 @@ module fp_cbrt #(
     );
 
     reg [31:0] w_d1; reg [7:0] k_d1; reg v_d1; reg s_d1;
-    reg [1:0] r_d1; // PHẢI CÓ THANH GHI NÀY ĐỂ TRÁNH RACE CONDITION
+    reg [1:0] r_d1; 
     always @(posedge clk) begin 
         w_d1 <= w_fp; k_d1 <= k_exp;
         v_d1 <= in_valid; s_d1 <= sign_res; 
-        r_d1 <= r; 
+        r_d1 <= r;
     end
 
     // --- LOGIC SCALE CHUẨN HOÁ GIÁ TRỊ TỪ ROM ---
@@ -67,8 +67,7 @@ module fp_cbrt #(
     shift_reg #(.W(1),  .D(4)) ds5 (.clk(clk), .in(s_d1), .out(s_d5));
     
     // T = 5 -> 9: MUL2 (t2 = y0*t1)
-    wire [31:0] t2;
-    wire v_t2;
+    wire [31:0] t2; wire v_t2;
     fp_mul u_mul2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), 
         .in_operand_A(y0_d5), .in_operand_B(t1), 
@@ -84,8 +83,10 @@ module fp_cbrt #(
     
     // T = 9 -> 14: FMA (t3 = 4/3 - (w/3)*t2)
     wire [25:0] m_w = {1'b1, w_d9[22:0], 2'b0};
-    wire [25:0] m_w3 = (m_w>>2) + (m_w>>4) + (m_w>>6) + (m_w>>8);
-    wire [31:0] neg_w_third = {1'b1, w_d9[30:23] - 8'd2, m_w3[22:0]};
+    // SỬA LỖI TOÁN HỌC TẠI ĐÂY: Chuẩn hóa chia 3 độ phân giải cao
+    wire [25:0] m_w3 = (m_w>>2) + (m_w>>4) + (m_w>>6) + (m_w>>8) + (m_w>>10) + (m_w>>12) + (m_w>>14) + (m_w>>16) + (m_w>>18) + (m_w>>20) + (m_w>>22) + (m_w>>23);
+    wire [31:0] neg_w_third = m_w3[24] ? {1'b1, w_d9[30:23] - 8'd1, m_w3[23:1]} :
+                                         {1'b1, w_d9[30:23] - 8'd2, m_w3[22:0]};
 
     wire [31:0] t3; wire v_t3;
     fp_fma u_fma1 (
@@ -102,8 +103,7 @@ module fp_cbrt #(
     shift_reg #(.W(1),  .D(5)) ds14 (.clk(clk), .in(s_d9), .out(s_d14));
     
     // T = 14 -> 18: MUL3 (y1 = y0*t3)
-    wire [31:0] y1;
-    wire v_t4;
+    wire [31:0] y1; wire v_t4;
     fp_mul u_mul3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t3), 
         .in_operand_A(y0_d14), .in_operand_B(t3), 

@@ -11,13 +11,19 @@ module fp_atan #(
     output wire        out_valid, 
     output wire [31:0] out_result
 );
-    localparam C1 = 32'h3F800000; localparam C2 = 32'h3EAAAAAB; localparam C3 = 32'h3F19999A; localparam ONE = 32'h3F800000;
-    
+    // BỘ HỆ SỐ RATIONAL [2/2] TỐI ƯU CỰC ĐẠI CHO KHOẢNG [0, 1]
+    localparam C1 = 32'h3F800000; // 1.0
+    localparam C2 = 32'h3E613562; // 0.21993
+    localparam C3 = 32'h3F0D929A; // 0.55326
+    localparam ONE = 32'h3F800000;
+
     // T = 0 -> 1: Chuẩn bị giá trị |x|
     wire [31:0] x_reg = {1'b0, in_operand_A[30:0]};
-    reg [31:0] x_d1; reg s_d1, v_d1;
+    reg [31:0] x_d1;
+    reg s_d1, v_d1;
     always @(posedge clk) begin 
-        x_d1 <= x_reg; s_d1 <= in_operand_A[31]; v_d1 <= in_valid;
+        x_d1 <= x_reg;
+        s_d1 <= in_operand_A[31]; v_d1 <= in_valid;
     end
 
     // T = 1 -> 5: Tính x^2
@@ -28,7 +34,7 @@ module fp_atan #(
         .out_valid(v_x2), .out_result(x2),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
+
     wire [31:0] x_d5; wire s_d5; 
     shift_reg #(.W(32), .D(4)) dx5 (.clk(clk), .in(x_d1), .out(x_d5)); 
     shift_reg #(.W(1),  .D(4)) ds5 (.clk(clk), .in(s_d1), .out(s_d5));
@@ -41,14 +47,13 @@ module fp_atan #(
         .out_valid(v_fma), .out_result(n_part),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
     fp_fma u_fma_d (
         .clk(clk), .rst_n(rst_n), .in_valid(v_x2), 
         .in_operand_A(C3), .in_operand_B(x2), .in_operand_C(ONE), 
         .out_valid(), .out_result(d_part),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
+
     wire [31:0] x_d10; wire s_d10;
     shift_reg #(.W(32), .D(5)) dx10 (.clk(clk), .in(x_d5), .out(x_d10)); 
     shift_reg #(.W(1),  .D(5)) ds10 (.clk(clk), .in(s_d5), .out(s_d10));
@@ -61,11 +66,11 @@ module fp_atan #(
         .out_valid(v_n), .out_result(n_fin),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
+
     wire [31:0] d_d4; wire s_d14;
     shift_reg #(.W(32), .D(4)) dd4 (.clk(clk), .in(d_part), .out(d_d4)); 
     shift_reg #(.W(1),  .D(4)) ds14 (.clk(clk), .in(s_d10), .out(s_d14));
-    
+
     // T = 14 -> 28: DIV kết quả
     wire [31:0] div_res; wire v_div;
     fp_div u_div_op (
@@ -74,7 +79,7 @@ module fp_atan #(
         .out_valid(v_div), .out_result(div_res),
         .status_zero(), .status_invalid()
     );
-    
+
     wire s_d28; 
     shift_reg #(.W(1), .D(14)) ds28 (.clk(clk), .in(s_d14), .out(s_d28));
     
