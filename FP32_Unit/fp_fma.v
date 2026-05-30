@@ -116,10 +116,12 @@ module fp_fma #(
     
     always @* begin
         lza_shift = 0;
-        for (i = 72; i >= 0; i = i - 1) begin
-            if (s3_wide_sum[i]) begin
-                lza_shift = 72 - i;
-                break;
+        begin : lza_loop
+            for (i = 72; i >= 0; i = i - 1) begin
+                if (s3_wide_sum[i]) begin
+                    lza_shift = 72 - i;
+                    disable lza_loop;
+                end
             end
         end
     end

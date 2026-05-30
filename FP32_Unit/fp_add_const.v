@@ -78,10 +78,12 @@ module fp_add_const #(
                     out_result <= {s1_sign_res, s1_exp_max + 8'd1, s1_sum[23:1]};
                 end else begin
                     lza_shift = 0;
-                    for (i = 23; i >= 0; i = i - 1) begin
-                        if (s1_sum[i]) begin
-                            lza_shift = 23 - i;
-                            break;
+                    begin : lza_loop
+                        for (i = 23; i >= 0; i = i - 1) begin
+                            if (s1_sum[i]) begin
+                                lza_shift = 23 - i;
+                                disable lza_loop;
+                            end
                         end
                     end
                     norm_mant = s1_sum[23:0] << lza_shift;

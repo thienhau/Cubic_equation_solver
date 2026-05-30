@@ -105,10 +105,12 @@ module fp_add_sub #(
             s3_lza_shift = 0;
             if (s2_sum[24]) s3_lza_shift = 5'd0;
             else begin
-                for (i = 23; i >= 0; i = i - 1) begin
-                    if (s2_sum[i]) begin
-                        s3_lza_shift = 23 - i;
-                        break;
+                begin : lza_loop
+                    for (i = 23; i >= 0; i = i - 1) begin
+                        if (s2_sum[i]) begin
+                            s3_lza_shift = 23 - i;
+                            disable lza_loop;
+                        end
                     end
                 end
             end
