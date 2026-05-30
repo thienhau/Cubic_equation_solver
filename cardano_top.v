@@ -51,7 +51,7 @@ module cardano_top #(
 
     // T = 18 -> 20: Khối S
     wire [31:0] S_val; wire v20;
-    fp_mul_const_one_third u_mul_S (.clk(clk), .rst_n(rst_n), .in_valid(v18), .in_operand_A(A_coef), .out_valid(v20), .out_result(S_val));
+    fp_mul_const u_mul_S (.clk(clk), .rst_n(rst_n), .in_valid(v18), .in_operand_A(A_coef), .out_valid(v20), .out_result(S_val));
     
     // T = 18 -> 20: Delay B, C
     wire [31:0] B20, C20;
@@ -94,7 +94,7 @@ module cardano_top #(
     
     // T = 32 -> 34: Khối p/3
     wire [31:0] p_3; wire v34;
-    fp_mul_const_one_third u_mul_p3 (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_operand_A(p_val_int), .out_valid(v34), .out_result(p_3));
+    fp_mul_const u_mul_p3 (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_operand_A(p_val_int), .out_valid(v34), .out_result(p_3));
     
     // T = 34 -> 36: Delay p/3
     wire [31:0] p_3_36;
