@@ -28,6 +28,10 @@ module fp_div #(
     reg [24:0] div_b;
     reg [25:0] quotient;
 
+    reg [24:0] t_rem;
+    reg [3:0]  t_q;
+    integer i;
+
     // T = 0 -> 14: Thực hiện khởi tạo, dịch căn lề, chia SRT và chuẩn hóa
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -73,11 +77,7 @@ module fp_div #(
                 end
                 
                 SRT_LOOP: begin
-                    // T = 2 -> 8: Vòng lặp chia Radix-16
-                    reg [24:0] t_rem;
-                    reg [3:0]  t_q;
-                    integer i;
-                    
+                    // T = 2 -> 8: Vòng lặp chia Radix-16                    
                     t_rem = rem_a;
                     t_q = 4'd0;
                     for (i = 0; i < 4; i = i + 1) begin

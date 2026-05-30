@@ -16,6 +16,15 @@ module fp_add_const #(
     wire [7:0]  const_exp  = FLOAT_CONST[30:23];
     wire [23:0] const_mant = {1'b1, FLOAT_CONST[22:0]};
 
+    wire        in_sign = in_operand_A[31];
+    wire [7:0]  in_exp  = in_operand_A[30:23];
+    wire [23:0] in_mant = (|in_exp) ? {1'b1, in_operand_A[22:0]} : 24'd0;
+
+    reg [4:0]  shift;
+    reg [23:0] aligned_c;
+    reg [23:0] aligned_in;
+    reg [23:0] norm_mant;
+
     // T = 0 -> 1: Căn lề số nhỏ dựa trên Exponent
     reg s1_valid;
     reg s1_sign_res;
@@ -31,24 +40,20 @@ module fp_add_const #(
         end else begin
             s1_valid <= in_valid;
             if (in_valid) begin
-                wire in_sign = in_operand_A[31];
-                wire [7:0] in_exp = in_operand_A[30:23];
-                wire [23:0] in_mant = (|in_exp) ? {1'b1, in_operand_A[22:0]} : 24'd0;
-                
                 if (in_operand_A[30:0] >= FLOAT_CONST[30:0]) begin
                     s1_sign_res <= in_sign;
                     s1_exp_max  <= in_exp;
                     
-                    wire [4:0] shift = ((in_exp - const_exp) > 25) ? 25 : (in_exp - const_exp);
-                    wire [23:0] aligned_c = const_mant >> shift;
+                    shift = ((in_exp - const_exp) > 25) ? 5'd25 : (in_exp - const_exp);
+                    aligned_c = const_mant >> shift;
                     
                     s1_sum <= (in_sign == const_sign) ? (in_mant + aligned_c) : (in_mant - aligned_c);
                 end else begin
                     s1_sign_res <= const_sign;
                     s1_exp_max  <= const_exp;
                     
-                    wire [4:0] shift = ((const_exp - in_exp) > 25) ? 25 : (const_exp - in_exp);
-                    wire [23:0] aligned_in = in_mant >> shift;
+                    shift = ((const_exp - in_exp) > 25) ? 5'd25 : (const_exp - in_exp);
+                    aligned_in = in_mant >> shift;
                     
                     s1_sum <= (in_sign == const_sign) ? (const_mant + aligned_in) : (const_mant - aligned_in);
                 end
@@ -79,7 +84,7 @@ module fp_add_const #(
                             break;
                         end
                     end
-                    wire [23:0] norm_mant = s1_sum[23:0] << lza_shift;
+                    norm_mant = s1_sum[23:0] << lza_shift;
                     out_result <= {s1_sign_res, s1_exp_max - lza_shift, norm_mant[22:0]};
                 end
             end

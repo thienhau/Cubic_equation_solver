@@ -15,6 +15,10 @@ module fp_add_sub #(
     output reg         status_overflow,
     output reg         status_zero
 );
+    wire        eff_sign_B = in_operand_B[31] ^ in_is_sub;
+    wire [23:0] mant_A     = (|in_operand_A[30:23]) ? {1'b1, in_operand_A[22:0]} : 24'd0;
+    wire [23:0] mant_B     = (|in_operand_B[30:23]) ? {1'b1, in_operand_B[22:0]} : 24'd0;
+
     // T = 0 -> 1: Hoán đổi toán hạng (A luôn >= B về độ lớn) và tính hiệu số mũ
     reg s1_valid;
     reg s1_sign_L, s1_sign_S;
@@ -31,10 +35,6 @@ module fp_add_sub #(
         end else begin
             s1_valid <= in_valid;
             if (in_valid) begin
-                wire eff_sign_B = in_operand_B[31] ^ in_is_sub;
-                wire [23:0] mant_A = (|in_operand_A[30:23]) ? {1'b1, in_operand_A[22:0]} : 24'd0;
-                wire [23:0] mant_B = (|in_operand_B[30:23]) ? {1'b1, in_operand_B[22:0]} : 24'd0;
-                
                 if (in_operand_A[30:0] >= in_operand_B[30:0]) begin
                     s1_sign_L <= in_operand_A[31];
                     s1_sign_S <= eff_sign_B;
@@ -54,6 +54,9 @@ module fp_add_sub #(
         end
     end
 
+    wire [4:0]  shift_amt      = (s1_exp_diff > 25) ? 5'd25 : s1_exp_diff[4:0];
+    wire [23:0] aligned_mant_S = s1_mant_S >> shift_amt;
+
     // T = 1 -> 2: Căn lề số nhỏ (Alignment Shift) và thực hiện phép tính thực
     reg s2_valid;
     reg s2_sign_res;
@@ -71,9 +74,6 @@ module fp_add_sub #(
             s2_sign_res <= s1_sign_L;
             s2_exp_L <= s1_exp_L;
             s2_is_eff_sub <= s1_sign_L ^ s1_sign_S;
-            
-            wire [4:0] shift_amt = (s1_exp_diff > 25) ? 5'd25 : s1_exp_diff[4:0];
-            wire [23:0] aligned_mant_S = s1_mant_S >> shift_amt;
             
             if (s1_sign_L ^ s1_sign_S) begin
                 s2_sum <= s1_mant_L - aligned_mant_S;
@@ -115,6 +115,10 @@ module fp_add_sub #(
         end
     end
 
+    reg [8:0]       final_exp_ovf;
+    reg signed [9:0] final_exp_norm;
+    reg [23:0]      norm_mant;
+
     // T = 3 -> 4: Chuẩn hóa (Normalize), làm tròn và đóng gói kết quả
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -132,23 +136,23 @@ module fp_add_sub #(
                 end else begin
                     status_zero <= 1'b0;
                     if (s3_sum[24]) begin 
-                        wire [8:0] final_exp = s3_exp_L + 1;
-                        if (final_exp >= 255) begin
+                        final_exp_ovf = s3_exp_L + 1;
+                        if (final_exp_ovf >= 255) begin
                             out_result <= {s3_sign_res, 8'hFF, 23'd0};
                             status_overflow <= 1'b1;
                         end else begin
-                            out_result <= {s3_sign_res, final_exp[7:0], s3_sum[23:1]};
+                            out_result <= {s3_sign_res, final_exp_ovf[7:0], s3_sum[23:1]};
                             status_overflow <= 1'b0;
                         end
                     end else begin
-                        wire signed [9:0] final_exp = $signed({2'b0, s3_exp_L}) - $signed({5'b0, s3_lza_shift});
-                        wire [23:0] norm_mant = s3_sum[23:0] << s3_lza_shift;
+                        final_exp_norm = $signed({2'b0, s3_exp_L}) - $signed({5'b0, s3_lza_shift});
+                        norm_mant = s3_sum[23:0] << s3_lza_shift;
                         
-                        if (final_exp <= 0) begin
+                        if (final_exp_norm <= 0) begin
                             out_result <= {s3_sign_res, 31'd0};
                             status_zero <= 1'b1;
                         end else begin
-                            out_result <= {s3_sign_res, final_exp[7:0], norm_mant[22:0]};
+                            out_result <= {s3_sign_res, final_exp_norm[7:0], norm_mant[22:0]};
                         end
                         status_overflow <= 1'b0;
                     end
