@@ -75,18 +75,20 @@ module trigon_path #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    // T = 79 -> 83: Phân tán pha (-2PI/3 và -4PI/3)
-    wire [31:0] t2, t3; wire v_t2;
+    // T = 79 -> 83: Phân tán pha (Gập góc để luôn < 2.1 rad)
+    wire [31:0] t2, t3;
+    wire v_t2;
+    // t2 = 2PI/3 - t1 
     fp_add_sub u_add_t2 (
-        .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b0), 
-        .in_operand_A(t1), .in_operand_B(32'hC0060A92), 
+        .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b1), 
+        .in_operand_A(32'h40060A92), .in_operand_B(t1), 
         .out_valid(v_t2), .out_result(t2),
         .status_overflow(), .status_zero()
     );
-    
+    // t3 = PI/3 - t1 (Sinh ra góc cực nhỏ)
     fp_add_sub u_add_t3 (
-        .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b0), 
-        .in_operand_A(t1), .in_operand_B(32'h40060A92), 
+        .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b1), 
+        .in_operand_A(32'h3F860A92), .in_operand_B(t1), 
         .out_valid(), .out_result(t3),
         .status_overflow(), .status_zero()
     );
@@ -140,9 +142,11 @@ module trigon_path #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
     
+    wire [31:0] neg_r_dly94 = {~r_dly94[31], r_dly94[30:0]};
+    
     fp_fma u_fma_x3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
-        .in_operand_A(r_dly94), .in_operand_B(c3), .in_operand_C(neg_off), 
+        .in_operand_A(neg_r_dly94), .in_operand_B(c3), .in_operand_C(neg_off), 
         .out_valid(), .out_result(x3),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );

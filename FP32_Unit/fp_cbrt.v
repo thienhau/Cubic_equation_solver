@@ -20,18 +20,35 @@ module fp_cbrt #(
     wire [31:0] w_fp = {1'b0, 8'd127 + {6'd0, r}, in_operand_A[22:0]};
     wire sign_res = in_operand_A[31];
     
-    wire [31:0] y0;
+    wire [31:0] y0_rom; // Đổi y0 thành y0_rom
     pade_cbrt_rom u_rom (
         .clk(clk), 
         .addr(w_fp[22:15]), 
-        .data_out(y0)
+        .data_out(y0_rom)
     );
     
     reg [31:0] w_d1; reg [7:0] k_d1; reg v_d1; reg s_d1;
+    reg [1:0] r_d1; // THÊM BIẾN LƯU r
+    
     always @(posedge clk) begin 
-        w_d1 <= w_fp; k_d1 <= k_exp; 
+        w_d1 <= w_fp; k_d1 <= k_exp;
         v_d1 <= in_valid; s_d1 <= sign_res; 
+        r_d1 <= r; // LƯU DẤU r VÀO PIPELINE T=1
     end
+
+    // --- LOGIC SCALE TỰ ĐỘNG CHUẨN HÓA NEWTON-RAPHSON ---
+    wire [25:0] m_y0 = {1'b1, y0_rom[22:0], 2'b0};
+    // Nếu r=1: nhân 0.796875 (1/2 + 1/4 + 1/32 + 1/64)
+    wire [25:0] y0_r1 = (m_y0 >> 1) + (m_y0 >> 2) + (m_y0 >> 5) + (m_y0 >> 6);
+    // Nếu r=2: nhân 0.625 (1/2 + 1/8)
+    wire [25:0] y0_r2 = (m_y0 >> 1) + (m_y0 >> 3);
+    
+    wire [25:0] y0_scaled = (r_d1 == 2) ? y0_r2 : ((r_d1 == 1) ? y0_r1 : m_y0);
+    wire shift_req = ~y0_scaled[25]; // Bù chuẩn hóa nếu số rớt xuống dưới 1.0
+    wire [22:0] final_y0_mant = shift_req ? y0_scaled[23:1] : y0_scaled[24:2];
+    wire [7:0]  final_y0_exp  = y0_rom[30:23] - shift_req;
+    
+    wire [31:0] y0 = (r_d1 == 0) ? y0_rom : {y0_rom[31], final_y0_exp, final_y0_mant};
 
     // T = 1 -> 5: MUL1 (t1 = y0*y0)
     wire [31:0] t1; wire v_t1;
@@ -65,8 +82,10 @@ module fp_cbrt #(
     
     // T = 9 -> 14: FMA (t3 = 4/3 - (w/3)*t2)
     wire [25:0] m_w = {1'b1, w_d9[22:0], 2'b0};
-    wire [25:0] m_w3 = (m_w>>2) + (m_w>>4) + (m_w>>6) + (m_w>>8);
-    wire [31:0] neg_w_third = {1'b1, w_d9[30:23] - 8'd2, m_w3[22:0]};
+    wire [25:0] m_w3 = (m_w>>2) + (m_w>>4) + (m_w>>6) + (m_w>>8) + (m_w>>10) + (m_w>>12) + (m_w>>14);
+    wire [31:0] neg_w_third = m_w3[24] ? {1'b1, w_d9[30:23] - 8'd1, m_w3[23:1]} :
+                                         {1'b1, w_d9[30:23] - 8'd2, m_w3[22:0]};
+
     wire [31:0] t3; wire v_t3;
     fp_fma u_fma1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t2), 
@@ -122,9 +141,9 @@ module fp_cbrt #(
     shift_reg #(.W(8), .D(4)) dk26 (.clk(clk), .in(k_d22), .out(k_d26));
     shift_reg #(.W(1), .D(4)) ds26 (.clk(clk), .in(s_d22), .out(s_d26));
 
-    wire in_is_zero_d26;
-    shift_reg #(.W(1), .D(26)) d_zero (.clk(clk), .in(~|in_operand_A[30:23]), .out(in_is_zero_d26));
+    wire z_d26;
+    shift_reg #(.W(1), .D(26)) dly_z (.clk(clk), .in(~|in_operand_A[30:23]), .out(z_d26));
 
     assign out_valid = v_out;
-    assign out_result = in_is_zero_d26 ? 32'd0 : {s_d26, raw[30:23] + k_d26 - 8'd127, raw[22:0]};
+    assign out_result = z_d26 ? 32'd0 : {s_d26, raw[30:23] + k_d26 - 8'd127, raw[22:0]};
 endmodule
