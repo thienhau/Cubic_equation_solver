@@ -154,7 +154,8 @@ module cardano_top #(
     
     // T = 52 -> 52: Xác định dấu của Delta
     wire [31:0] delta_val = delta_val_int;
-    wire delta_is_pos = (delta_val[31] == 1'b0);
+    wire delta_is_zero = (delta_val[30:0] == 31'd0);
+    wire delta_is_pos = (delta_val[31] == 1'b0) & ~delta_is_zero;
 
     // T = 52 -> *: FIFO Bypass Metadata định tuyến nhánh
     wire fifo_push = pre_valid_out;
@@ -202,9 +203,7 @@ module cardano_top #(
     trigon_path u_trigon (.clk(clk), .rst_n(rst_n), .in_valid(en_trigon), .p(p_val), .q(q_val), .offset(offset_val), .out_valid(v_trigon), .x1(t_x1), .x2(t_x2), .x3(t_x3));
     
     wire [7:0] id_trigon_out;
-    // SỬA CHỖ NÀY: Do FMA ở cuối Trigon_path có trễ 5 cycles, nên độ trễ tổng của nhánh này thực chất là 122 chu kỳ. 
-    // Chúng ta phải tăng lên 122 để lấy được đúng nghiệm, không bị rác (00000000 hay vô cực).
-    shift_reg #(.W(8), .D(122)) dly_id_t (.clk(clk), .in(id_52), .out(id_trigon_out));
+    shift_reg #(.W(8), .D(121)) dly_id_t (.clk(clk), .in(id_52), .out(id_trigon_out));
 
     // T = * -> *: Bộ trọng tài Out-of-Order (Output Arbiter) kèm FIFOs
     wire quad_empty, radic_empty, trigon_empty;

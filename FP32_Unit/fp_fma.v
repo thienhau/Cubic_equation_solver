@@ -60,21 +60,24 @@ module fp_fma #(
             s2_sign_mul <= s1_sign_mul;
             s2_sign_c   <= s1_sign_c;
             
-            s2_mant_mul <= (s1_is_zero_mul) ? 48'd0 : (s1_mant_a * s1_mant_b);
-            
             // FIX: Căn lề C sao cho bit ẩn nằm đúng vị trí bit 46 (khớp với tích mul)
             if (s1_is_zero_c) begin
                 s2_exp_max <= s1_exp_mul;
+                s2_mant_mul <= (s1_is_zero_mul) ? 48'd0 : (s1_mant_a * s1_mant_b);
                 s2_mant_c_aligned <= 73'd0;
             end else if (s1_is_zero_mul) begin
                 s2_exp_max <= s1_exp_c;
+                s2_mant_mul <= 48'd0;
                 s2_mant_c_aligned <= {26'd0, s1_mant_c, 23'd0};
             end else if (s1_exp_mul >= s1_exp_c) begin
                 s2_exp_max <= s1_exp_mul;
+                s2_mant_mul <= (s1_mant_a * s1_mant_b); // Giữ nguyên tích
                 s2_mant_c_aligned <= {26'd0, s1_mant_c, 23'd0} >> (s1_exp_mul - s1_exp_c);
             end else begin
                 s2_exp_max <= s1_exp_c;
-                s2_mant_c_aligned <= {26'd0, s1_mant_c, 23'd0} << (s1_exp_c - s1_exp_mul);
+                // Lấy tích trực tiếp đem dịch phải, tránh lấy nhầm thanh ghi trễ
+                s2_mant_mul <= (s1_exp_c - s1_exp_mul >= 48) ? 48'd0 : ((s1_mant_a * s1_mant_b) >> (s1_exp_c - s1_exp_mul));
+                s2_mant_c_aligned <= {26'd0, s1_mant_c, 23'd0};
             end
         end
     end

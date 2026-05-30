@@ -54,10 +54,10 @@ module fp_mul_const #(
                 if (s1_exp == 0) begin
                     out_result <= 32'd0;
                 end else begin
-                    if (final_mant_sum[23]) begin
-                        out_result <= {s1_sign, s1_exp - 8'd1, final_mant_sum[22:0]};
+                    if (final_mant_sum[22]) begin
+                        out_result <= {s1_sign, s1_exp - 8'd1, final_mant_sum[21:0], 1'b0};
                     end else begin
-                        out_result <= {s1_sign, s1_exp - 8'd2, final_mant_sum[21:0], 1'b0};
+                        out_result <= {s1_sign, s1_exp - 8'd2, final_mant_sum[20:0], 2'b00};
                     end
                 end
             end

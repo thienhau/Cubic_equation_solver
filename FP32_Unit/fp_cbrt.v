@@ -66,7 +66,7 @@ module fp_cbrt #(
     // T = 9 -> 14: FMA (t3 = 4/3 - (w/3)*t2)
     wire [25:0] m_w = {1'b1, w_d9[22:0], 2'b0};
     wire [25:0] m_w3 = (m_w>>2) + (m_w>>4) + (m_w>>6) + (m_w>>8);
-    wire [31:0] neg_w_third = {1'b1, w_d9[30:23], m_w3[24:2]};
+    wire [31:0] neg_w_third = {1'b1, w_d9[30:23] - 8'd2, m_w3[22:0]};
     wire [31:0] t3; wire v_t3;
     fp_fma u_fma1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t2), 
@@ -122,6 +122,9 @@ module fp_cbrt #(
     shift_reg #(.W(8), .D(4)) dk26 (.clk(clk), .in(k_d22), .out(k_d26));
     shift_reg #(.W(1), .D(4)) ds26 (.clk(clk), .in(s_d22), .out(s_d26));
 
+    wire in_is_zero_d26;
+    shift_reg #(.W(1), .D(26)) d_zero (.clk(clk), .in(~|in_operand_A[30:23]), .out(in_is_zero_d26));
+
     assign out_valid = v_out;
-    assign out_result = {s_d26, raw[30:23] + k_d26, raw[22:0]};
+    assign out_result = in_is_zero_d26 ? 32'd0 : {s_d26, raw[30:23] + k_d26 - 8'd127, raw[22:0]};
 endmodule
