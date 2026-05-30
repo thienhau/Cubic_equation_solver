@@ -86,7 +86,7 @@ module trigon_path #(
     
     fp_add_sub u_add_t3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b0), 
-        .in_operand_A(t1), .in_operand_B(32'hC0860A92), 
+        .in_operand_A(t1), .in_operand_B(32'h40060A92), 
         .out_valid(), .out_result(t3),
         .status_overflow(), .status_zero()
     );

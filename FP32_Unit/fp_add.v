@@ -89,7 +89,9 @@ module fp_add_sub #(
     reg [7:0] s3_exp_L;
     reg [24:0] s3_sum;
     reg [4:0] s3_lza_shift;
+    
     integer i;
+    reg [4:0] temp_shift; // Thêm biến trung gian để tính toán an toàn
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -102,18 +104,23 @@ module fp_add_sub #(
             s3_exp_L <= s2_exp_L;
             s3_sum <= s2_sum;
             
-            s3_lza_shift = 0;
-            if (s2_sum[24]) s3_lza_shift = 5'd0;
+            // 1. Tính độ dịch bit vào biến trung gian
+            temp_shift = 5'd0;
+            if (s2_sum[24]) temp_shift = 5'd0;
             else begin
                 begin : lza_loop
                     for (i = 23; i >= 0; i = i - 1) begin
                         if (s2_sum[i]) begin
-                            s3_lza_shift = 23 - i;
+                            temp_shift = 23 - i;
                             disable lza_loop;
                         end
                     end
                 end
             end
+            
+            // 2. Chốt vào thanh ghi bằng phép gán Non-Blocking (<=) 
+            // Điều này tách biệt hoàn toàn Data của các Transaction khác nhau
+            s3_lza_shift <= temp_shift;
         end
     end
 

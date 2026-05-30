@@ -32,9 +32,9 @@ module fp_mul_const #(
             s1_exp   <= in_exp;
             
             if (in_valid && in_exp != 0) begin
-                s1_sum_A <= (in_mant >> 2)  + (in_mant >> 4);
-                s1_sum_B <= (in_mant >> 6)  + (in_mant >> 8);
-                s1_sum_C <= (in_mant >> 10) + (in_mant >> 12) + (in_mant >> 14);
+                s1_sum_A <= (in_mant >> 2)  + (in_mant >> 4) + (in_mant >> 6);
+                s1_sum_B <= (in_mant >> 8)  + (in_mant >> 10) + (in_mant >> 12);
+                s1_sum_C <= (in_mant >> 14) + (in_mant >> 16) + (in_mant >> 18) + (in_mant >> 20) + (in_mant >> 22);
             end else begin
                 {s1_sum_A, s1_sum_B, s1_sum_C} <= 0;
             end
