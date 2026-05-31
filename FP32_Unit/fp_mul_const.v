@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module fp_mul_const #(
+module fp_mul_const_one_third #(
     parameter STAGES = 2
 )(
     input  wire        clk,
