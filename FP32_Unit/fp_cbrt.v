@@ -25,25 +25,57 @@ module fp_cbrt #(
         .addr(w_fp[22:15]), 
         .data_out(y0_rom)
     );
-
+    
     reg [31:0] w_d1; reg [7:0] k_d1; reg v_d1; reg s_d1;
-    reg [1:0] r_d1; 
+    reg [1:0] r_d1;
+    
     always @(posedge clk) begin 
         w_d1 <= w_fp; k_d1 <= k_exp;
         v_d1 <= in_valid; s_d1 <= sign_res; 
         r_d1 <= r;
     end
 
-    // --- LOGIC SCALE CHUẨN HOÁ GIÁ TRỊ TỪ ROM ---
-    wire [25:0] m_y0 = {1'b1, y0_rom[22:0], 2'b0};
+    // =============================================================
+    // PIPELINE TÍNH SỚM PHÉP CHIA 3 ĐỂ KHỬ CRITICAL PATH TẠI T=9
+    // =============================================================
+    wire [25:0] m_w_early = {1'b1, w_d1[22:0], 2'b0};
+    reg [25:0] w3_sumA, w3_sumB, w3_sumC;
+    reg [31:0] w_d2_reg, w_d3_reg;
     
+    // T = 1 -> 2: Cộng tầng 1 tổ hợp từ các bit dịch cứng
+    always @(posedge clk) begin
+        w3_sumA  <= (m_w_early>>2)  + (m_w_early>>4)  + (m_w_early>>6)  + (m_w_early>>8);
+        w3_sumB  <= (m_w_early>>10) + (m_w_early>>12) + (m_w_early>>14) + (m_w_early>>16);
+        w3_sumC  <= (m_w_early>>18) + (m_w_early>>20) + (m_w_early>>22) + (m_w_early>>23);
+        w_d2_reg <= w_d1;
+    end
+    
+    // T = 2 -> 3: Gom kết quả cây cộng tầng cuối
+    reg [25:0] w3_sum;
+    always @(posedge clk) begin
+        w3_sum   <= w3_sumA + w3_sumB + w3_sumC;
+        w_d3_reg <= w_d2_reg;
+    end
+    
+    // T = 3 -> 4: Trích xuất dấu số mũ và định trị hoàn chỉnh cho -w/3
+    reg [31:0] neg_w_third_reg;
+    always @(posedge clk) begin
+        neg_w_third_reg <= w3_sum[24] ? {1'b1, w_d3_reg[30:23] - 8'd1, w3_sum[23:1]} :
+                                        {1'b1, w_d3_reg[30:23] - 8'd2, w3_sum[22:0]};
+    end
+    
+    // T = 4 -> 9: Trượt kết quả qua shift_reg 5 chu kỳ để khớp thời gian tại T=9
+    wire [31:0] neg_w_third;
+    shift_reg #(.W(32), .D(5)) dly_nwt (.clk(clk), .in(neg_w_third_reg), .out(neg_w_third));
+    // =============================================================
+
+    // --- LOGIC SCALE CHUẨN HOÁ GIÁ TRỊ TỪ ROM (T = 1) ---
+    wire [25:0] m_y0 = {1'b1, y0_rom[22:0], 2'b0};
     // Nếu r=1: nhân hệ số ~0.7937
     wire [25:0] y0_r1 = (m_y0 >> 1) + (m_y0 >> 2) + (m_y0 >> 5) + (m_y0 >> 7) + (m_y0 >> 8) + (m_y0 >> 11) + (m_y0 >> 13);
     // Nếu r=2: nhân hệ số ~0.6299
     wire [25:0] y0_r2 = (m_y0 >> 1) + (m_y0 >> 3) + (m_y0 >> 8) + (m_y0 >> 10) + (m_y0 >> 12) + (m_y0 >> 14);
-    
     wire [25:0] y0_scaled = (r_d1 == 2) ? y0_r2 : ((r_d1 == 1) ? y0_r1 : m_y0);
-    
     wire shift_req = ~y0_scaled[25]; 
     wire [22:0] final_y0_mant = shift_req ? y0_scaled[23:1] : y0_scaled[24:2];
     wire [7:0]  final_y0_exp  = y0_rom[30:23] - shift_req;
@@ -59,7 +91,7 @@ module fp_cbrt #(
         .out_valid(v_t1), .out_result(t1),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-
+    
     wire [31:0] w_d5, y0_d5; wire [7:0] k_d5; wire s_d5;
     shift_reg #(.W(32), .D(4)) dw5 (.clk(clk), .in(w_d1), .out(w_d5));
     shift_reg #(.W(32), .D(4)) dy5 (.clk(clk), .in(y0), .out(y0_d5));
@@ -67,14 +99,15 @@ module fp_cbrt #(
     shift_reg #(.W(1),  .D(4)) ds5 (.clk(clk), .in(s_d1), .out(s_d5));
     
     // T = 5 -> 9: MUL2 (t2 = y0*t1)
-    wire [31:0] t2; wire v_t2;
+    wire [31:0] t2;
+    wire v_t2;
     fp_mul u_mul2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), 
         .in_operand_A(y0_d5), .in_operand_B(t1), 
         .out_valid(v_t2), .out_result(t2),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-
+    
     wire [31:0] w_d9, y0_d9; wire [7:0] k_d9; wire s_d9;
     shift_reg #(.W(32), .D(4)) dw9 (.clk(clk), .in(w_d5), .out(w_d9));
     shift_reg #(.W(32), .D(4)) dy9 (.clk(clk), .in(y0_d5), .out(y0_d9));
@@ -82,12 +115,7 @@ module fp_cbrt #(
     shift_reg #(.W(1),  .D(4)) ds9 (.clk(clk), .in(s_d5), .out(s_d9));
     
     // T = 9 -> 14: FMA (t3 = 4/3 - (w/3)*t2)
-    wire [25:0] m_w = {1'b1, w_d9[22:0], 2'b0};
-    // SỬA LỖI TOÁN HỌC TẠI ĐÂY: Chuẩn hóa chia 3 độ phân giải cao
-    wire [25:0] m_w3 = (m_w>>2) + (m_w>>4) + (m_w>>6) + (m_w>>8) + (m_w>>10) + (m_w>>12) + (m_w>>14) + (m_w>>16) + (m_w>>18) + (m_w>>20) + (m_w>>22) + (m_w>>23);
-    wire [31:0] neg_w_third = m_w3[24] ? {1'b1, w_d9[30:23] - 8'd1, m_w3[23:1]} :
-                                         {1'b1, w_d9[30:23] - 8'd2, m_w3[22:0]};
-
+    // Toàn bộ phần tính toán toán học tổ hợp nặng nề của neg_w_third đã được lược bỏ tại đây.
     wire [31:0] t3; wire v_t3;
     fp_fma u_fma1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t2), 
@@ -95,7 +123,7 @@ module fp_cbrt #(
         .out_valid(v_t3), .out_result(t3),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-
+    
     wire [31:0] w_d14, y0_d14; wire [7:0] k_d14; wire s_d14;
     shift_reg #(.W(32), .D(5)) dw14 (.clk(clk), .in(w_d9), .out(w_d14));
     shift_reg #(.W(32), .D(5)) dy14 (.clk(clk), .in(y0_d9), .out(y0_d14));
@@ -103,19 +131,20 @@ module fp_cbrt #(
     shift_reg #(.W(1),  .D(5)) ds14 (.clk(clk), .in(s_d9), .out(s_d14));
     
     // T = 14 -> 18: MUL3 (y1 = y0*t3)
-    wire [31:0] y1; wire v_t4;
+    wire [31:0] y1;
+    wire v_t4;
     fp_mul u_mul3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t3), 
         .in_operand_A(y0_d14), .in_operand_B(t3), 
         .out_valid(v_t4), .out_result(y1),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-
+    
     wire [31:0] w_d18; wire [7:0] k_d18; wire s_d18;
     shift_reg #(.W(32), .D(4)) dw18 (.clk(clk), .in(w_d14), .out(w_d18));
     shift_reg #(.W(8),  .D(4)) dk18 (.clk(clk), .in(k_d14), .out(k_d18)); 
     shift_reg #(.W(1),  .D(4)) ds18 (.clk(clk), .in(s_d14), .out(s_d18));
-
+    
     // T = 18 -> 22: MUL4 (t4 = y1*y1)
     wire [31:0] t4; wire v_t5;
     fp_mul u_mul4 (
@@ -124,12 +153,12 @@ module fp_cbrt #(
         .out_valid(v_t5), .out_result(t4),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-
+    
     wire [31:0] w_d22; wire [7:0] k_d22; wire s_d22;
     shift_reg #(.W(32), .D(4)) dw22 (.clk(clk), .in(w_d18), .out(w_d22));
     shift_reg #(.W(8),  .D(4)) dk22 (.clk(clk), .in(k_d18), .out(k_d22)); 
     shift_reg #(.W(1),  .D(4)) ds22 (.clk(clk), .in(s_d18), .out(s_d22));
-
+    
     // T = 22 -> 26: MUL5 (out_raw = w*t4)
     wire [31:0] raw; wire v_out;
     fp_mul u_mul5 (
@@ -138,14 +167,15 @@ module fp_cbrt #(
         .out_valid(v_out), .out_result(raw),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-
+    
     wire [7:0] k_d26; wire s_d26;
     shift_reg #(.W(8), .D(4)) dk26 (.clk(clk), .in(k_d22), .out(k_d26));
     shift_reg #(.W(1), .D(4)) ds26 (.clk(clk), .in(s_d22), .out(s_d26));
-
+    
     wire in_is_zero_d26;
     shift_reg #(.W(1), .D(26)) d_zero (.clk(clk), .in(~|in_operand_A[30:23]), .out(in_is_zero_d26));
 
     assign out_valid = v_out;
     assign out_result = in_is_zero_d26 ? 32'd0 : {s_d26, raw[30:23] + k_d26 - 8'd127, raw[22:0]};
+
 endmodule

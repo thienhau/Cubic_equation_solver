@@ -18,15 +18,15 @@ module fp_fma #(
     output reg         status_invalid,
     output reg         status_zero
 );
-
+    // --- STAGE 1: Setup ---
     reg s1_valid, s1_sign_mul, s1_sign_c, s1_is_zero_mul, s1_is_zero_c;
-    // FIX: Khai báo Exponent là SIGNED 10-bit để bắt giá trị âm (Underflow)
-    reg signed [9:0] s1_exp_mul, s1_exp_c; 
+    reg signed [9:0] s1_exp_mul, s1_exp_c;
     reg [23:0] s1_mant_a, s1_mant_b, s1_mant_c;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            s1_valid <= 0; s1_exp_mul <= 0; s1_exp_c <= 0;
+            s1_valid <= 0;
+            s1_exp_mul <= 0; s1_exp_c <= 0;
             s1_mant_a <= 0; s1_mant_b <= 0; s1_mant_c <= 0;
             s1_is_zero_mul <= 0; s1_is_zero_c <= 0;
         end else begin
@@ -35,7 +35,6 @@ module fp_fma #(
                 s1_sign_mul <= in_operand_A[31] ^ in_operand_B[31];
                 s1_sign_c   <= in_operand_C[31];
                 
-                // FIX: Ép kiểu sang signed để phép trừ 127 tạo ra số âm chính xác khi Underflow
                 s1_exp_mul <= $signed({2'b0, in_operand_A[30:23]}) + $signed({2'b0, in_operand_B[30:23]}) - 10'sd127;
                 s1_exp_c   <= $signed({2'b0, in_operand_C[30:23]});
                 
@@ -49,14 +48,16 @@ module fp_fma #(
         end
     end
 
+    // --- STAGE 2: Mul & Align ---
     reg s2_valid, s2_sign_mul, s2_sign_c;
-    reg signed [9:0] s2_exp_max; // FIX: Phải là signed
+    reg signed [9:0] s2_exp_max;
     reg [47:0] s2_mant_mul;
     reg [72:0] s2_mant_c_aligned;
-
+    
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            s2_valid <= 0; s2_mant_mul <= 0; s2_mant_c_aligned <= 0; s2_exp_max <= 0;
+            s2_valid <= 0;
+            s2_mant_mul <= 0; s2_mant_c_aligned <= 0; s2_exp_max <= 0;
         end else begin
             s2_valid <= s1_valid;
             s2_sign_mul <= s1_sign_mul;
@@ -71,7 +72,6 @@ module fp_fma #(
                 s2_mant_mul <= 48'd0;
                 s2_mant_c_aligned <= {26'd0, s1_mant_c, 23'd0};
             end else if (s1_exp_mul >= s1_exp_c) begin
-                // Lúc này phép toán so sánh đã đúng do mang dấu âm/dương
                 s2_exp_max <= s1_exp_mul;
                 s2_mant_mul <= (s1_mant_a * s1_mant_b); 
                 s2_mant_c_aligned <= {26'd0, s1_mant_c, 23'd0} >> (s1_exp_mul - s1_exp_c);
@@ -83,13 +83,15 @@ module fp_fma #(
         end
     end
 
+    // --- STAGE 3: Wide Add ---
     reg s3_valid, s3_sign_res;
-    reg signed [9:0] s3_exp_max; // FIX: Phải là signed
+    reg signed [9:0] s3_exp_max;
     reg [72:0] s3_wide_sum;
-
+    
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            s3_valid <= 0; s3_wide_sum <= 0; s3_exp_max <= 0;
+            s3_valid <= 0;
+            s3_wide_sum <= 0; s3_exp_max <= 0;
         end else begin
             s3_valid <= s2_valid;
             s3_exp_max <= s2_exp_max;
@@ -109,44 +111,52 @@ module fp_fma #(
         end
     end
 
+    // --- STAGE 4: LZA Anticipation (TỐI ƯU CRITICAL PATH Ở ĐÂY) ---
+    // Không gộp phép dịch (shift) vào đây nữa để giảm logic delay.
     reg s4_valid, s4_sign_res;
-    reg signed [9:0] s4_exp_res; // FIX: Phải là signed
-    reg [47:0] s4_mant_norm;
+    reg signed [9:0] s4_exp_res;
+    reg [72:0] s4_wide_sum;
+    reg [6:0]  s4_lza_shift;
     
     integer i; reg [6:0] lza_shift;
-    
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            s4_valid <= 0; s4_mant_norm <= 0; s4_exp_res <= 0;
+            s4_valid <= 0; s4_sign_res <= 0;
+            s4_wide_sum <= 0; s4_exp_res <= 0; s4_lza_shift <= 0;
         end else begin
             s4_valid <= s3_valid;
             s4_sign_res <= s3_sign_res;
+            s4_wide_sum <= s3_wide_sum;
             
             if (s3_wide_sum == 0) begin
-                s4_mant_norm <= 0;
                 s4_exp_res <= 0;
+                s4_lza_shift <= 0;
             end else begin
                 lza_shift = 0;
                 for (i = 72; i >= 0; i = i - 1) begin
                     if (s3_wide_sum[i] && lza_shift == 0) lza_shift = 72 - i;
                 end
-                
-                // FIX: Ép lza_shift sang signed để không làm sai lệch phép toán
-                s4_exp_res <= s3_exp_max - $signed({3'b0, lza_shift}) + 10'sd26; 
-                s4_mant_norm <= (s3_wide_sum << lza_shift) >> 25; 
+                s4_exp_res <= s3_exp_max - $signed({3'b0, lza_shift}) + 10'sd26;
+                s4_lza_shift <= lza_shift;
             end
         end
     end
 
+    // --- STAGE 5: Pack & Shift ---
+    // Phép dịch 73-bit giờ đây nằm gọn trong Stage này
+    wire [72:0] shifted_sum = s4_wide_sum << s4_lza_shift;
+    wire [47:0] s4_mant_norm = shifted_sum[72:25]; // tương đương với dịch phải 25
+    
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             out_valid <= 0; out_result <= 0;
+            status_overflow <= 0; status_underflow <= 0;
+            status_invalid <= 0; status_zero <= 0;
         end else begin
             out_valid <= s4_valid;
             if (s4_valid) begin
-                // FIX: Bắt tín hiệu Underflow khi exponent <= 0 (Toán hạng quá nhỏ)
-                if (s4_mant_norm == 0 || s4_exp_res <= 0) begin
-                    out_result <= 32'd0; 
+                if (s4_wide_sum == 0 || s4_exp_res <= 0) begin
+                    out_result <= 32'd0;
                 end else begin
                     out_result <= {s4_sign_res, s4_exp_res[7:0], s4_mant_norm[46:24]};
                 end
