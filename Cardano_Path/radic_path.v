@@ -42,12 +42,12 @@ module radic_path #(
     fp_add_sub u_add_u (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t18), .in_is_sub(1'b0), 
         .in_operand_A(q_half_dly18), .in_operand_B(sqrt_d), 
-        .out_valid(v_t22), .out_result(u_in), .status_overflow(), .status_zero()
+        .out_valid(v_t22), .out_result(u_in), .status_overflow(), .status_invalid(), .status_zero()
     );
     fp_add_sub u_sub_v (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t18), .in_is_sub(1'b1), 
         .in_operand_A(q_half_dly18), .in_operand_B(sqrt_d), 
-        .out_valid(), .out_result(v_in), .status_overflow(), .status_zero()
+        .out_valid(), .out_result(v_in), .status_overflow(), .status_invalid(), .status_zero()
     );
 
     // T = 22 -> 48: Căn bậc ba u và v
@@ -66,12 +66,12 @@ module radic_path #(
     fp_add_sub u_add_uv (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t48), .in_is_sub(1'b0), 
         .in_operand_A(u_out), .in_operand_B(v_out), 
-        .out_valid(v_t52), .out_result(uv_sum), .status_overflow(), .status_zero()
+        .out_valid(v_t52), .out_result(uv_sum), .status_overflow(), .status_invalid(), .status_zero()
     );
     fp_add_sub u_sub_uv (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t48), .in_is_sub(1'b1), 
         .in_operand_A(u_out), .in_operand_B(v_out), 
-        .out_valid(), .out_result(uv_diff), .status_overflow(), .status_zero()
+        .out_valid(), .out_result(uv_diff), .status_overflow(), .status_invalid(), .status_zero()
     );
 
     // ---------------------------------------------------------
@@ -81,7 +81,7 @@ module radic_path #(
     fp_add_sub u_add_x1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t52), .in_is_sub(1'b1), 
         .in_operand_A(uv_sum), .in_operand_B(offset_dly52), 
-        .out_valid(v_t56), .out_result(x1), .status_overflow(), .status_zero()
+        .out_valid(v_t56), .out_result(x1), .status_overflow(), .status_invalid(), .status_zero()
     );
 
     wire [31:0] neg_half_uv = (uv_sum == 32'd0) ? 32'd0 : {~uv_sum[31], uv_sum[30:23] - 8'd1, uv_sum[22:0]};
@@ -89,7 +89,7 @@ module radic_path #(
     fp_add_sub u_add_re (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t52), .in_is_sub(1'b1), 
         .in_operand_A(neg_half_uv), .in_operand_B(offset_dly52), 
-        .out_valid(), .out_result(Re), .status_overflow(), .status_zero()
+        .out_valid(), .out_result(Re), .status_overflow(), .status_invalid(), .status_zero()
     );
 
     wire [31:0] abs_uv_diff = {1'b0, uv_diff[30:0]};
@@ -118,7 +118,7 @@ module radic_path #(
     fp_add_sub u_add_sumsq (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t60), .in_is_sub(1'b0), 
         .in_operand_A(re_sq), .in_operand_B(im_sq), 
-        .out_valid(v_t64), .out_result(sum_sq), .status_overflow(), .status_zero()
+        .out_valid(v_t64), .out_result(sum_sq), .status_overflow(), .status_invalid(), .status_zero()
     );
 
     wire [31:0] Mag_raw; wire v_t82;
@@ -159,7 +159,7 @@ module radic_path #(
     fp_add_sub u_add_phase (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t98), .in_is_sub(phase_is_sub), 
         .in_operand_A(phase_A), .in_operand_B(atan_val), 
-        .out_valid(v_t102), .out_result(Phase_out), .status_overflow(), .status_zero()
+        .out_valid(v_t102), .out_result(Phase_out), .status_overflow(), .status_invalid(), .status_zero()
     );
 
     // ---------------------------------------------------------

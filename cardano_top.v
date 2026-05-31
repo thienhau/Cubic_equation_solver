@@ -55,7 +55,7 @@ module cardano_top #(
 
     // T = 18 -> 20: Khối S
     wire [31:0] S_val; wire v20;
-    fp_mul_const_one_third u_mul_S (.clk(clk), .rst_n(rst_n), .in_valid(v18), .in_operand_A(A_coef), .out_valid(v20), .out_result(S_val));
+    fp_mul_const u_mul_S (.clk(clk), .rst_n(rst_n), .in_valid(v18), .in_operand_A(A_coef), .out_valid(v20), .out_result(S_val));
 
     // T = 18 -> 20: Delay B, C
     wire [31:0] B20, C20;
@@ -77,7 +77,7 @@ module cardano_top #(
     wire [31:0] S3, mul_3S2, C_minus_SB; wire v28;
     fp_mul u_mul_S3 (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_operand_A(S2), .in_operand_B(S24), .out_valid(v28), .out_result(S3), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
     fp_mul u_mul_3S2 (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_operand_A(S2), .in_operand_B(32'h40400000), .out_valid(), .out_result(mul_3S2), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
-    fp_add_sub u_sub_C_SB (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_is_sub(1'b1), .in_operand_A(C24), .in_operand_B(SB), .out_valid(), .out_result(C_minus_SB), .status_overflow(), .status_zero());
+    fp_add_sub u_sub_C_SB (.clk(clk), .rst_n(rst_n), .in_valid(v24), .in_is_sub(1'b1), .in_operand_A(C24), .in_operand_B(SB), .out_valid(), .out_result(C_minus_SB), .status_overflow(), .status_invalid(), .status_zero());
 
     // T = 24 -> 28: Delay B
     wire [31:0] B28;
@@ -85,7 +85,7 @@ module cardano_top #(
 
     // T = 28 -> 32: Khối p, 2S3
     wire [31:0] p_val_int, mul_2S3; wire v32;
-    fp_add_sub u_sub_p (.clk(clk), .rst_n(rst_n), .in_valid(v28), .in_is_sub(1'b1), .in_operand_A(B28), .in_operand_B(mul_3S2), .out_valid(v32), .out_result(p_val_int), .status_overflow(), .status_zero());
+    fp_add_sub u_sub_p (.clk(clk), .rst_n(rst_n), .in_valid(v28), .in_is_sub(1'b1), .in_operand_A(B28), .in_operand_B(mul_3S2), .out_valid(v32), .out_result(p_val_int), .status_overflow(), .status_invalid(), .status_zero());
     fp_mul u_mul_2S3 (.clk(clk), .rst_n(rst_n), .in_valid(v28), .in_operand_A(S3), .in_operand_B(32'h40000000), .out_valid(), .out_result(mul_2S3), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
     
     // T = 28 -> 32: Delay C_minus_SB
@@ -94,11 +94,11 @@ module cardano_top #(
 
     // T = 32 -> 36: Khối q
     wire [31:0] q_val_int; wire v36;
-    fp_add_sub u_add_q (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_is_sub(1'b0), .in_operand_A(mul_2S3), .in_operand_B(C_minus_SB32), .out_valid(v36), .out_result(q_val_int), .status_overflow(), .status_zero());
+    fp_add_sub u_add_q (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_is_sub(1'b0), .in_operand_A(mul_2S3), .in_operand_B(C_minus_SB32), .out_valid(v36), .out_result(q_val_int), .status_overflow(), .status_invalid(), .status_zero());
 
     // T = 32 -> 34: Khối p/3
     wire [31:0] p_3; wire v34;
-    fp_mul_const_one_third u_mul_p3 (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_operand_A(p_val_int), .out_valid(v34), .out_result(p_3));
+    fp_mul_const u_mul_p3 (.clk(clk), .rst_n(rst_n), .in_valid(v32), .in_operand_A(p_val_int), .out_valid(v34), .out_result(p_3));
     
     // T = 34 -> 36: Delay p/3
     wire [31:0] p_3_36;
@@ -131,7 +131,7 @@ module cardano_top #(
 
     // T = 48 -> 52: Khối Delta
     wire [31:0] delta_val_int; wire v52_delta;
-    fp_add_sub u_add_delta (.clk(clk), .rst_n(rst_n), .in_valid(v48), .in_is_sub(1'b0), .in_operand_A(q_2_sq_48), .in_operand_B(p_3_cb), .out_valid(v52_delta), .out_result(delta_val_int), .status_overflow(), .status_zero());
+    fp_add_sub u_add_delta (.clk(clk), .rst_n(rst_n), .in_valid(v48), .in_is_sub(1'b0), .in_operand_A(q_2_sq_48), .in_operand_B(p_3_cb), .out_valid(v52_delta), .out_result(delta_val_int), .status_overflow(), .status_invalid(), .status_zero());
 
     // T = 32 -> 52: Delay p
     wire pre_valid_out = v52;

@@ -83,14 +83,14 @@ module trigon_path #(
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b1), 
         .in_operand_A(32'h40060A92), .in_operand_B(t1), 
         .out_valid(v_t2), .out_result(t2),
-        .status_overflow(), .status_zero()
+        .status_overflow(), .status_invalid(), .status_zero()
     );
     // t3 = PI/3 - t1 (Sinh ra góc cực nhỏ)
     fp_add_sub u_add_t3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b1), 
         .in_operand_A(32'h3F860A92), .in_operand_B(t1), 
         .out_valid(), .out_result(t3),
-        .status_overflow(), .status_zero()
+        .status_overflow(), .status_invalid(), .status_zero()
     );
     
     // T = 79 -> 112: c1

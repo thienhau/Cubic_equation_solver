@@ -59,7 +59,7 @@ module quad_path #(
         .clk(clk), .rst_n(rst_n), .in_valid(v_t8), .in_is_sub(1'b1), 
         .in_operand_A(c2_dly8), .in_operand_B(bd4), 
         .out_valid(v_t12), .out_result(delta),
-        .status_overflow(), .status_zero()
+        .status_overflow(), .status_invalid(), .status_zero()
     );
 
     // T = 12 -> 30: Căn bậc hai Delta
@@ -77,14 +77,14 @@ module quad_path #(
         .clk(clk), .rst_n(rst_n), .in_valid(v_t30), .in_is_sub(1'b0), 
         .in_operand_A(neg_c), .in_operand_B(sqrt_delta), 
         .out_valid(v_t34), .out_result(num1),
-        .status_overflow(), .status_zero()
+        .status_overflow(), .status_invalid(), .status_zero()
     );
     
     fp_add_sub u_sub_num2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t30), .in_is_sub(1'b1), 
         .in_operand_A(neg_c), .in_operand_B(sqrt_delta), 
         .out_valid(), .out_result(num2),
-        .status_overflow(), .status_zero()
+        .status_overflow(), .status_invalid(), .status_zero()
     );
 
     // T = 34 -> 48: Chia cho 2b

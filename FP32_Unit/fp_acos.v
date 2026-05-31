@@ -30,7 +30,7 @@ module fp_acos #(
         .clk(clk), .rst_n(rst_n), .in_valid(v_d1), .in_is_sub(1'b1),
         .in_operand_A(32'h3F800000), .in_operand_B(x_d1),
         .out_valid(v_sub), .out_result(sub_x),
-        .status_overflow(), .status_zero()
+        .status_overflow(), .status_invalid(), .status_zero()
     );
 
     // T = 5 -> 23: Tính sqrt_x = sqrt(1.0 - |x|)
