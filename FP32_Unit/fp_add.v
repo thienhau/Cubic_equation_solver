@@ -131,38 +131,39 @@ module fp_add_sub #(
     // T = 3 -> 4: Chuẩn hóa (Normalize), làm tròn và đóng gói kết quả
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            out_valid <= 1'b0;
-            out_result <= 32'd0;
-            status_zero <= 1'b0;
+            out_valid       <= 1'b0;
+            out_result      <= 32'd0;
+            status_zero     <= 1'b0;
             status_overflow <= 1'b0;
         end else begin
             out_valid <= s3_valid;
             if (s3_valid) begin
                 if (s3_sum == 0) begin
-                    out_result <= 32'd0;
-                    status_zero <= 1'b1;
+                    out_result      <= 32'd0;
+                    status_zero     <= 1'b1;
                     status_overflow <= 1'b0;
-                end else begin
-                    status_zero <= 1'b0;
-                    if (s3_sum[24]) begin 
-                        final_exp_ovf = s3_exp_L + 1;
-                        if (final_exp_ovf >= 255) begin
-                            out_result <= {s3_sign_res, 8'hFF, 23'd0};
-                            status_overflow <= 1'b1;
-                        end else begin
-                            out_result <= {s3_sign_res, final_exp_ovf[7:0], s3_sum[23:1]};
-                            status_overflow <= 1'b0;
-                        end
+                end else if (s3_sum[24]) begin 
+                    final_exp_ovf = s3_exp_L + 1;
+                    if (final_exp_ovf >= 255) begin
+                        out_result      <= {s3_sign_res, 8'hFF, 23'd0}; // Infinity
+                        status_overflow <= 1'b1;
+                        status_zero     <= 1'b0;
                     end else begin
-                        final_exp_norm = $signed({2'b0, s3_exp_L}) - $signed({5'b0, s3_lza_shift});
-                        norm_mant = s3_sum[23:0] << s3_lza_shift;
-                        
-                        if (final_exp_norm <= 0) begin
-                            out_result <= {s3_sign_res, 31'd0};
-                            status_zero <= 1'b1;
-                        end else begin
-                            out_result <= {s3_sign_res, final_exp_norm[7:0], norm_mant[22:0]};
-                        end
+                        out_result      <= {s3_sign_res, final_exp_ovf[7:0], s3_sum[23:1]};
+                        status_overflow <= 1'b0;
+                        status_zero     <= 1'b0;
+                    end
+                end else begin
+                    final_exp_norm = $signed({2'b0, s3_exp_L}) - $signed({5'b0, s3_lza_shift});
+                    norm_mant = s3_sum[23:0] << s3_lza_shift;
+                    
+                    if (final_exp_norm <= 0) begin
+                        out_result      <= {s3_sign_res, 31'd0}; // Ép về 0 (Underflow)
+                        status_zero     <= 1'b1; // Gán duy nhất tại đây khi exp <= 0
+                        status_overflow <= 1'b0;
+                    end else begin
+                        out_result      <= {s3_sign_res, final_exp_norm[7:0], norm_mant[22:0]};
+                        status_zero     <= 1'b0; // Gán duy nhất tại đây khi số hợp lệ
                         status_overflow <= 1'b0;
                     end
                 end

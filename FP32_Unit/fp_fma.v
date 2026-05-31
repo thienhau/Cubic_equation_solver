@@ -143,22 +143,43 @@ module fp_fma #(
     end
 
     // --- STAGE 5: Pack & Shift ---
-    // Phép dịch 73-bit giờ đây nằm gọn trong Stage này
     wire [72:0] shifted_sum = s4_wide_sum << s4_lza_shift;
-    wire [47:0] s4_mant_norm = shifted_sum[72:25]; // tương đương với dịch phải 25
+    wire [47:0] s4_mant_norm = shifted_sum[72:25];
     
+    // Kiểm tra tràn số mũ 10-bit có dấu
+    wire fma_overflow  = s4_valid & (s4_exp_res >= 10'sd255);
+    wire fma_underflow = s4_valid & (s4_wide_sum != 0) & (s4_exp_res <= 10'sd0);
+    wire fma_zero      = s4_valid & (s4_wide_sum == 0 || fma_underflow);
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            out_valid <= 0; out_result <= 0;
-            status_overflow <= 0; status_underflow <= 0;
-            status_invalid <= 0; status_zero <= 0;
+            out_valid        <= 0;
+            out_result       <= 0;
+            status_overflow  <= 0;
+            status_underflow <= 0;
+            status_invalid   <= 0;
+            status_zero      <= 0;
         end else begin
             out_valid <= s4_valid;
             if (s4_valid) begin
-                if (s4_wide_sum == 0 || s4_exp_res <= 0) begin
-                    out_result <= 32'd0;
+                if (fma_overflow) begin
+                    out_result       <= {s4_sign_res, 8'hFF, 23'd0}; // Infinity
+                    status_overflow  <= 1'b1;
+                    status_underflow <= 1'b0;
+                    status_invalid   <= 1'b0;
+                    status_zero      <= 1'b0;
+                end else if (fma_zero) begin
+                    out_result       <= 32'd0;
+                    status_overflow  <= 1'b0;
+                    status_underflow <= fma_underflow;
+                    status_invalid   <= 1'b0;
+                    status_zero      <= 1'b1;
                 end else begin
-                    out_result <= {s4_sign_res, s4_exp_res[7:0], s4_mant_norm[46:24]};
+                    out_result       <= {s4_sign_res, s4_exp_res[7:0], s4_mant_norm[46:24]};
+                    status_overflow  <= 1'b0;
+                    status_underflow <= 1'b0;
+                    status_invalid   <= 1'b0;
+                    status_zero      <= 1'b0;
                 end
             end
         end

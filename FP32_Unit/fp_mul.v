@@ -107,31 +107,49 @@ module fp_mul #(
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            out_valid <= 1'b0;
-            out_result <= 32'd0;
-            status_overflow <= 1'b0;
+            out_valid        <= 1'b0;
+            out_result       <= 32'd0;
+            status_overflow  <= 1'b0;
             status_underflow <= 1'b0;
-            status_invalid <= 1'b0;
-            status_zero <= 1'b0;
+            status_invalid   <= 1'b0;
+            status_zero      <= 1'b0;
         end else begin
             out_valid <= s3_valid;
             if (s3_valid) begin
                 if (s3_is_nan_inf) begin
-                    out_result <= {s3_sign, 8'hFF, 23'd0};
-                    status_invalid <= 1'b1;
-                end else if (s3_is_zero || norm_exp[8]) begin 
-                    out_result <= {s3_sign, 31'd0};
-                    status_underflow <= ~s3_is_zero;
-                    status_zero <= s3_is_zero;
-                end else if (norm_exp >= 9'd255) begin
-                    out_result <= {s3_sign, 8'hFF, 23'd0};
-                    status_overflow <= 1'b1;
-                end else begin
-                    out_result <= {s3_sign, norm_exp[7:0], rounded_mant[22:0]};
-                    status_zero <= 1'b0;
-                    status_overflow <= 1'b0;
+                    // Sửa chuẩn Invalid cho ngoại lệ Inf * 0
+                    if (s3_is_zero) begin
+                        out_result       <= {s3_sign, 8'hFF, 23'h3FFFFF}; // NaN (Quiet NaN)
+                        status_invalid   <= 1'b1;
+                    end else begin
+                        out_result       <= {s3_sign, 8'hFF, 23'd0};     // Infinity
+                        status_invalid   <= 1'b0; // Hợp lệ theo chuẩn IEEE-754
+                    end
+                    status_overflow  <= 1'b0;
                     status_underflow <= 1'b0;
-                    status_invalid <= 1'b0;
+                    status_zero      <= 1'b0;
+                    
+                end else if (s3_is_zero || norm_exp[8]) begin 
+                    out_result       <= {s3_sign, 31'd0};
+                    status_underflow <= ~s3_is_zero;
+                    status_zero      <= s3_is_zero;
+                    // BẮT BUỘC: Hạ các cờ còn lại để xóa dấu vết của transaction trước
+                    status_overflow  <= 1'b0;
+                    status_invalid   <= 1'b0;
+                    
+                end else if (norm_exp >= 9'd255) begin
+                    out_result       <= {s3_sign, 8'hFF, 23'd0};
+                    status_overflow  <= 1'b1;
+                    status_underflow <= 1'b0;
+                    status_invalid   <= 1'b0;
+                    status_zero      <= 1'b0;
+                    
+                end else begin
+                    out_result       <= {s3_sign, norm_exp[7:0], rounded_mant[22:0]};
+                    status_zero      <= 1'b0;
+                    status_overflow  <= 1'b0;
+                    status_underflow <= 1'b0;
+                    status_invalid   <= 1'b0;
                 end
             end
         end
