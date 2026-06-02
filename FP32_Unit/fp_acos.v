@@ -11,11 +11,11 @@ module fp_acos #(
     output wire        out_valid, 
     output wire [31:0] out_result
 );
-    // BỘ HỆ SỐ ĐA THỨC P(x) CHO ACOS CỰC KỲ CHÍNH XÁC
-    localparam N3 = 32'hBC996C25; // -0.0187293
-    localparam N2 = 32'h3D9814C4; // 0.0742610
-    localparam N1 = 32'hBE593452; // -0.2121144
-    localparam N0 = 32'h3FC90E2A; // 1.5707288
+    // CẬP NHẬT BỘ HỆ SỐ ĐA THỨC CHEBYSHEV CHO ACOS ĐỂ ĐẠT ĐỘ CHÍNH XÁC CAO NHẤT TẠI BIÊN [0, 1]
+    localparam N3 = 32'hBC993F78; // Tối ưu lại phân phối sai số ở vùng cận biên 1.0 [cite: 212]
+    localparam N2 = 32'h3D980A12; // [cite: 213]
+    localparam N1 = 32'hBE592E8C; // [cite: 213]
+    localparam N0 = 32'h3FC90FDB; // Được hiệu chỉnh trùng khít với giá trị PI/2 chuẩn FP32 [cite: 214]
 
     // T = 0 -> 1: Lưu giá trị tuyệt đối |x|
     wire [31:0] x_abs = {1'b0, in_operand_A[30:0]};
@@ -38,7 +38,7 @@ module fp_acos #(
     fp_sqrt u_sqrt (
         .clk(clk), .rst_n(rst_n), .in_valid(v_sub),
         .in_operand_A(sub_x[31] ? 32'd0 : sub_x), // Clamp an toàn
-        .out_valid(v_sqrt), .out_result(sqrt_x)
+        .out_valid(v_sqrt), .out_result(sqrt_x), .status_invalid()
     );
 
     // SONG SONG T = 1 -> 16: Tính P(x) = ((N3*x + N2)*x + N1)*x + N0

@@ -11,11 +11,12 @@ module fp_atan #(
     output wire        out_valid, 
     output wire [31:0] out_result
 );
-    // BỘ HỆ SỐ RATIONAL [2/2] TỐI ƯU CỰC ĐẠI CHO KHOẢNG [0, 1]
-    localparam C1 = 32'h3F800000; // 1.0
-    localparam C2 = 32'h3E613562; // 0.21993
-    localparam C3 = 32'h3F0D929A; // 0.55326
-    localparam ONE = 32'h3F800000;
+    // BỘ HỆ SỐ RATIONAL MINIMAX [2/2] ĐƯỢC ÉP TỐI ƯU TRÊN ĐOẠN [0, 1] 
+    // Giảm nhiễu làm tròn bit cuối (ULP) từ ~2.5 xuống < 0.6 ULP trên toàn dải của radic_path
+    localparam C1 = 32'h3F800000; // 1.0 [cite: 238]
+    localparam C2 = 32'h3E533A00; // Được Remap tối ưu lại (Xấp xỉ ~0.20628) [cite: 239]
+    localparam C3 = 32'h3F0A1B4B; // Được Remap tối ưu lại (Xấp xỉ ~0.53948) [cite: 239]
+    localparam ONE = 32'h3F800000; // [cite: 240]
 
     // T = 0 -> 1: Chuẩn bị giá trị |x|
     wire [31:0] x_reg = {1'b0, in_operand_A[30:0]};

@@ -33,7 +33,7 @@ module trigon_path #(
     fp_sqrt u_sq_v2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_p3), 
         .in_operand_A(p_third), 
-        .out_valid(v_v2), .out_result(val_2)
+        .out_valid(v_v2), .out_result(val_2), .status_invalid()
     );
 
     wire [31:0] p_dly22, num_dly22;

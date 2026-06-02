@@ -29,7 +29,7 @@ module radic_path #(
     wire [31:0] sqrt_d; wire v_t18;
     fp_sqrt u_sqrt_d (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid), 
-        .in_operand_A(delta), .out_valid(v_t18), .out_result(sqrt_d)
+        .in_operand_A(delta), .out_valid(v_t18), .out_result(sqrt_d), .status_invalid()
     );
 
     wire [31:0] q_half_dly18;
@@ -124,7 +124,7 @@ module radic_path #(
     wire [31:0] Mag_raw; wire v_t82;
     fp_sqrt u_sqrt_mag (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t64), 
-        .in_operand_A(sum_sq), .out_valid(v_t82), .out_result(Mag_raw)
+        .in_operand_A(sum_sq), .out_valid(v_t82), .out_result(Mag_raw), .status_invalid()
     );
 
     // ---------------------------------------------------------

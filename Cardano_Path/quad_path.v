@@ -67,7 +67,7 @@ module quad_path #(
     fp_sqrt u_sqrt (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t12), 
         .in_operand_A(delta), 
-        .out_valid(v_t30), .out_result(sqrt_delta)
+        .out_valid(v_t30), .out_result(sqrt_delta), .status_invalid()
     );
 
     // T = 30 -> 34: Tính Tử số (-c + sqrt_D) và (-c - sqrt_D)
