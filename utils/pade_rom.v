@@ -2,84 +2,126 @@
 
 // =========================================================================
 // MODULE: pade_sqrt_rom
-// Mô tả: Trả về giá trị hạt giống cho thuật toán căn bậc hai (Sqrt).
-//        Sử dụng 2 khối SRAM CDK_R512x16 song song để tạo bộ nhớ 512x32.
+// Mô tả: Trả về giá trị hạt giống 1024x32 cho thuật toán căn bậc hai (Sqrt).
+//        Sử dụng 8 khối Single-port RAM CDK_S256x16 ghép nối.
 // =========================================================================
 module pade_sqrt_rom #(
     parameter STAGES = 1
 )(
     input  wire        clk,
-    input  wire [11:0] addr,       // Giữ nguyên port 12-bit để đồng bộ hệ thống
-    output wire [31:0] data_out    // Chuyển sang wire vì dữ liệu xuất từ hard macro
+    input  wire [11:0] addr,       // Địa chỉ đầu vào hệ thống (Dùng 10 bit thấp [9:0])
+    output wire [31:0] data_out    // Dữ liệu đầu ra FP32 chính xác
 );
 
-    wire [15:0] sram_data_high;
-    wire [15:0] sram_data_low;
+    // Mạch giải mã chọn tầng (Active Low)
+    wire enable_b0 = (addr[9:8] == 2'b00) ? 1'b0 : 1'b1;
+    wire enable_b1 = (addr[9:8] == 2'b01) ? 1'b0 : 1'b1;
+    wire enable_b2 = (addr[9:8] == 2'b10) ? 1'b0 : 1'b1;
+    wire enable_b3 = (addr[9:8] == 2'b11) ? 1'b0 : 1'b1;
 
-    // Khối SRAM chứa 16-bit thấp [15:0] của hằng số Sqrt
-    CDK_R512x16 sram_sqrt_low (
-        .CLOCK    (clk),
-        .CEN      (1'b0),          // Luôn bật bộ nhớ (Active Low)
-        .WEN      (1'b1),          // Khóa chân ghi vĩnh viễn (Biến RAM thành ROM)
-        .ADDRESS  (addr[8:0]),     // Lấy 9 bit thấp phù hợp với không gian 512 từ nhớ
-        .DATA_IN  (16'b0),         // Không sử dụng đường ghi dữ liệu
-        .DATA_OUT (sram_data_low)
-    );
+    // Đường dây chứa dữ liệu đầu ra từ các khối đơn lẻ
+    wire [15:0] b0_low, b0_high;
+    wire [15:0] b1_low, b1_high;
+    wire [15:0] b2_low, b2_high;
+    wire [15:0] b3_low, b3_high;
 
-    // Khối SRAM chứa 16-bit cao [31:16] của hằng số Sqrt
-    CDK_R512x16 sram_sqrt_high (
-        .CLOCK    (clk),
-        .CEN      (1'b0),
-        .WEN      (1'b1),
-        .ADDRESS  (addr[8:0]),
-        .DATA_IN  (16'b0),
-        .DATA_OUT (sram_data_high)
-    );
+    // --- TẦNG 0 (Địa chỉ 0 -> 255) ---
+    CDK_S256x16 sqrt_b0_low  (.CLOCK(clk), .ENABLE(enable_b0), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b0_low));
+    CDK_S256x16 sqrt_b0_high (.CLOCK(clk), .ENABLE(enable_b0), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b0_high));
 
-    // Ghép dữ liệu từ 2 khối 16-bit thành chuẩn FP32 (32-bit)
-    assign data_out = {sram_data_high, sram_data_low};
+    // --- TẦNG 1 (Địa chỉ 256 -> 511) ---
+    CDK_S256x16 sqrt_b1_low  (.CLOCK(clk), .ENABLE(enable_b1), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b1_low));
+    CDK_S256x16 sqrt_b1_high (.CLOCK(clk), .ENABLE(enable_b1), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b1_high));
+
+    // --- TẦNG 2 (Địa chỉ 512 -> 767) ---
+    CDK_S256x16 sqrt_b2_low  (.CLOCK(clk), .ENABLE(enable_b2), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b2_low));
+    CDK_S256x16 sqrt_b2_high (.CLOCK(clk), .ENABLE(enable_b2), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b2_high));
+
+    // --- TẦNG 3 (Địa chỉ 768 -> 1023) ---
+    CDK_S256x16 sqrt_b3_low  (.CLOCK(clk), .ENABLE(enable_b3), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b3_low));
+    CDK_S256x16 sqrt_b3_high (.CLOCK(clk), .ENABLE(enable_b3), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b3_high));
+
+    // MUX chọn dữ liệu đầu ra trễ 1 chu kỳ để khớp độ trễ đọc của RAM
+    reg [1:0] addr_sel_delay;
+    always @(posedge clk) begin
+        addr_sel_delay <= addr[9:8];
+    end
+
+    // Gộp dữ liệu 32-bit dựa theo tầng đã chọn
+    reg [31:0] data_out_mux;
+    always @(*) begin
+        case (addr_sel_delay)
+            2'b00:   data_out_mux = {b0_high, b0_low};
+            2'b01:   data_out_mux = {b1_high, b1_low};
+            2'b10:   data_out_mux = {b2_high, b2_low};
+            2'b11:   data_out_mux = {b3_high, b3_low};
+            default: data_out_mux = 32'b0;
+        endcase
+    end
+
+    assign data_out = data_out_mux;
 
 endmodule
 
-
 // =========================================================================
 // MODULE: pade_cbrt_rom
-// Mô tả: Trả về giá trị hạt giống cho thuật toán căn bậc ba (Cbrt).
-//        Sử dụng 2 khối SRAM CDK_R512x16 song song để tạo bộ nhớ 512x32.
+// Mô tả: Trả về giá trị hạt giống 1024x32 cho thuật toán căn bậc ba (Cbrt).
+//        Sử dụng 8 khối Single-port RAM CDK_S256x16 ghép nối.
 // =========================================================================
 module pade_cbrt_rom #(
     parameter STAGES = 1
 )(
     input  wire        clk,
-    input  wire [11:0] addr,       // Giữ nguyên port 12-bit để đồng bộ hệ thống
-    output wire [31:0] data_out    // Chuyển sang wire vì dữ liệu xuất từ hard macro
+    input  wire [11:0] addr,
+    output wire [31:0] data_out
 );
 
-    wire [15:0] sram_data_high;
-    wire [15:0] sram_data_low;
+    // Mạch giải mã chọn tầng (Active Low)
+    wire enable_b0 = (addr[9:8] == 2'b00) ? 1'b0 : 1'b1;
+    wire enable_b1 = (addr[9:8] == 2'b01) ? 1'b0 : 1'b1;
+    wire enable_b2 = (addr[9:8] == 2'b10) ? 1'b0 : 1'b1;
+    wire enable_b3 = (addr[9:8] == 2'b11) ? 1'b0 : 1'b1;
 
-    // Khối SRAM chứa 16-bit thấp [15:0] của hằng số Cbrt
-    CDK_R512x16 sram_cbrt_low (
-        .CLOCK    (clk),
-        .CEN      (1'b0),          // Luôn bật bộ nhớ (Active Low)
-        .WEN      (1'b1),          // Khóa chân ghi vĩnh viễn (Biến RAM thành ROM)
-        .ADDRESS  (addr[8:0]),     // Lấy 9 bit thấp phù hợp với không gian 512 từ nhớ
-        .DATA_IN  (16'b0),
-        .DATA_OUT (sram_data_low)
-    );
+    // Đường dây chứa dữ liệu đầu ra từ các khối đơn lẻ
+    wire [15:0] b0_low, b0_high;
+    wire [15:0] b1_low, b1_high;
+    wire [15:0] b2_low, b2_high;
+    wire [15:0] b3_low, b3_high;
 
-    // Khối SRAM chứa 16-bit cao [31:16] của hằng số Cbrt
-    CDK_R512x16 sram_cbrt_high (
-        .CLOCK    (clk),
-        .CEN      (1'b0),
-        .WEN      (1'b1),
-        .ADDRESS  (addr[8:0]),
-        .DATA_IN  (16'b0),
-        .DATA_OUT (sram_data_high)
-    );
+    // --- TẦNG 0 (Địa chỉ 0 -> 255) ---
+    CDK_S256x16 cbrt_b0_low  (.CLOCK(clk), .ENABLE(enable_b0), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b0_low));
+    CDK_S256x16 cbrt_b0_high (.CLOCK(clk), .ENABLE(enable_b0), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b0_high));
 
-    // Ghép dữ liệu từ 2 khối 16-bit thành chuẩn FP32 (32-bit)
-    assign data_out = {sram_data_high, sram_data_low};
+    // --- TẦNG 1 (Địa chỉ 256 -> 511) ---
+    CDK_S256x16 cbrt_b1_low  (.CLOCK(clk), .ENABLE(enable_b1), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b1_low));
+    CDK_S256x16 cbrt_b1_high (.CLOCK(clk), .ENABLE(enable_b1), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b1_high));
+
+    // --- TẦNG 2 (Địa chỉ 512 -> 767) ---
+    CDK_S256x16 cbrt_b2_low  (.CLOCK(clk), .ENABLE(enable_b2), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b2_low));
+    CDK_S256x16 cbrt_b2_high (.CLOCK(clk), .ENABLE(enable_b2), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b2_high));
+
+    // --- TẦNG 3 (Địa chỉ 768 -> 1023) ---
+    CDK_S256x16 cbrt_b3_low  (.CLOCK(clk), .ENABLE(enable_b3), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b3_low));
+    CDK_S256x16 cbrt_b3_high (.CLOCK(clk), .ENABLE(enable_b3), .WR_ENABLE(1'b1), .ADDRESS(addr[7:0]), .DATA_IN(16'b0), .DATA_OUT(b3_high));
+
+    // MUX chọn dữ liệu đầu ra trễ 1 chu kỳ để khớp độ trễ đọc của RAM
+    reg [1:0] addr_sel_delay;
+    always @(posedge clk) begin
+        addr_sel_delay <= addr[9:8];
+    end
+
+    reg [31:0] data_out_mux;
+    always @(*) begin
+        case (addr_sel_delay)
+            2'b00:   data_out_mux = {b0_high, b0_low};
+            2'b01:   data_out_mux = {b1_high, b1_low};
+            2'b10:   data_out_mux = {b2_high, b2_low};
+            2'b11:   data_out_mux = {b3_high, b3_low};
+            default: data_out_mux = 32'b0;
+        endcase
+    end
+
+    assign data_out = data_out_mux;
 
 endmodule
 
