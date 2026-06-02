@@ -11,17 +11,9 @@ module fp_cos #(
     output wire        out_valid, 
     output wire [31:0] out_result
 );
-    // BỘ HỆ SỐ PHÂN THỨC MINIMAX TỐI ƯU RIÊNG CHO DẢI X <= 2.1 RAD (GIẢM SAI SỐ < 1 ULP)
-    // Đã được căn chỉnh lại qua thuật toán Remez để triệt tiêu sai số làm tròn của FP32
-    localparam N3 = 32'h00000000; 
-    localparam N2 = 32'h3CA9539B; // Thay đổi từ 32'h3CA9953B để bù trừ sai số đỉnh [cite: 195]
-    localparam N1 = 32'hBEE9A604; // Cập nhật hệ số bậc 2 [cite: 196]
-    localparam N0 = 32'h3F800000; // [cite: 196]
-
-    localparam D3 = 32'h00000000; 
-    localparam D2 = 32'h3A5E2321; // Cấu hình lại mẫu số để phân phối đều sai số [cite: 196]
-    localparam D1 = 32'h3D32CA1E; // [cite: 196]
-    localparam D0 = 32'h3F800000; // [cite: 197]
+    // BỘ HỆ SỐ CHUẨN IEEE-754 CHO COS(X)
+    localparam N3 = 32'h00000000; localparam N2 = 32'h3CA9953B; localparam N1 = 32'hBEE9A6B3; localparam N0 = 32'h3F800000;
+    localparam D3 = 32'h00000000; localparam D2 = 32'h3A616539; localparam D1 = 32'h3D32CB2B; localparam D0 = 32'h3F800000;
     
     // T = 0 -> 4: z = x*x
     wire [31:0] z; wire v_z;
