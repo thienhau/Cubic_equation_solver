@@ -51,10 +51,15 @@ module fp_cos #(
 
     // ==============================================================================
     // T = 4 -> 24: CHUỖI 4 BỘ FMA TÍNH ĐA THỨC (Horner Method)
-    // Tính P(u) = C0 + u * (C1 + u * (C2 + u * (C3 + u * C4)))
     // ==============================================================================
     wire [31:0] f0_t9, f1_t14, f2_t19, poly_t24;
     wire v_f0_t9, v_f1_t14, v_f2_t19, v_poly_t24;
+
+    // THÊM VÀO ĐÂY: Đồng bộ biến 'u' đi qua các tầng Pipeline
+    wire [31:0] u_t9, u_t14, u_t19;
+    shift_reg #(.W(32), .D(5))  dly_u_9  (.clk(clk), .in(u_t4), .out(u_t9));
+    shift_reg #(.W(32), .D(10)) dly_u_14 (.clk(clk), .in(u_t4), .out(u_t14));
+    shift_reg #(.W(32), .D(15)) dly_u_19 (.clk(clk), .in(u_t4), .out(u_t19));
 
     // f0 = C4 * u + C3
     fp_fma u_fma_0 (
@@ -63,27 +68,27 @@ module fp_cos #(
         .out_valid(v_f0_t9), .out_result(f0_t9),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
-    // f1 = f0 * u + C2
+
+    // f1 = f0 * u + C2 (Dùng u_t9)
     fp_fma u_fma_1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_f0_t9), 
-        .in_operand_A(f0_t9), .in_operand_B(u_t4), .in_operand_C(C2), 
+        .in_operand_A(f0_t9), .in_operand_B(u_t9), .in_operand_C(C2), 
         .out_valid(v_f1_t14), .out_result(f1_t14),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
-    // f2 = f1 * u + C1
+
+    // f2 = f1 * u + C1 (Dùng u_t14)
     fp_fma u_fma_2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_f1_t14), 
-        .in_operand_A(f1_t14), .in_operand_B(u_t4), .in_operand_C(C1), 
+        .in_operand_A(f1_t14), .in_operand_B(u_t14), .in_operand_C(C1), 
         .out_valid(v_f2_t19), .out_result(f2_t19),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
-    // poly = f2 * u + C0
+
+    // poly = f2 * u + C0 (Dùng u_t19)
     fp_fma u_fma_3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_f2_t19), 
-        .in_operand_A(f2_t19), .in_operand_B(u_t4), .in_operand_C(C0), 
+        .in_operand_A(f2_t19), .in_operand_B(u_t19), .in_operand_C(C0), 
         .out_valid(v_poly_t24), .out_result(poly_t24),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );

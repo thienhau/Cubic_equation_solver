@@ -73,14 +73,29 @@ module fp_acos #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
+    // ==============================================================================
     // T = 26 -> 46: Chuỗi FMA tính lõi Arcsin (20 chu kỳ)
+    // ==============================================================================
     wire [31:0] f0_t31, f1_t36, f2_t41, poly_t46;
     wire v_f0_t31, v_f1_t36, v_f2_t41, v_poly_t46;
-    fp_fma u_fma_0 (.clk(clk), .rst_n(rst_n), .in_valid(v_u_t26), .in_operand_A(C4), .in_operand_B(u_t26), .in_operand_C(C3), .out_valid(v_f0_t31), .out_result(f0_t31), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
-    fp_fma u_fma_1 (.clk(clk), .rst_n(rst_n), .in_valid(v_f0_t31), .in_operand_A(f0_t31), .in_operand_B(u_t26), .in_operand_C(C2), .out_valid(v_f1_t36), .out_result(f1_t36), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
-    fp_fma u_fma_2 (.clk(clk), .rst_n(rst_n), .in_valid(v_f1_t36), .in_operand_A(f1_t36), .in_operand_B(u_t26), .in_operand_C(C1), .out_valid(v_f2_t41), .out_result(f2_t41), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
-    fp_fma u_fma_3 (.clk(clk), .rst_n(rst_n), .in_valid(v_f2_t41), .in_operand_A(f2_t41), .in_operand_B(u_t26), .in_operand_C(C0), .out_valid(v_poly_t46), .out_result(poly_t46), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
 
+    // THÊM VÀO ĐÂY: Đồng bộ biến 'u' đi qua các tầng Pipeline
+    wire [31:0] u_t31, u_t36, u_t41;
+    shift_reg #(.W(32), .D(5))  dly_u_31 (.clk(clk), .in(u_t26), .out(u_t31));
+    shift_reg #(.W(32), .D(10)) dly_u_36 (.clk(clk), .in(u_t26), .out(u_t36));
+    shift_reg #(.W(32), .D(15)) dly_u_41 (.clk(clk), .in(u_t26), .out(u_t41));
+
+    fp_fma u_fma_0 (.clk(clk), .rst_n(rst_n), .in_valid(v_u_t26), .in_operand_A(C4), .in_operand_B(u_t26), .in_operand_C(C3), .out_valid(v_f0_t31), .out_result(f0_t31), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    
+    // Đổi B sang u_t31
+    fp_fma u_fma_1 (.clk(clk), .rst_n(rst_n), .in_valid(v_f0_t31), .in_operand_A(f0_t31), .in_operand_B(u_t31), .in_operand_C(C2), .out_valid(v_f1_t36), .out_result(f1_t36), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    
+    // Đổi B sang u_t36
+    fp_fma u_fma_2 (.clk(clk), .rst_n(rst_n), .in_valid(v_f1_t36), .in_operand_A(f1_t36), .in_operand_B(u_t36), .in_operand_C(C1), .out_valid(v_f2_t41), .out_result(f2_t41), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    
+    // Đổi B sang u_t41
+    fp_fma u_fma_3 (.clk(clk), .rst_n(rst_n), .in_valid(v_f2_t41), .in_operand_A(f2_t41), .in_operand_B(u_t41), .in_operand_C(C0), .out_valid(v_poly_t46), .out_result(poly_t46), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    
     // Cân bằng trễ biến z_t22 từ T=22 đến T=46 (Delay 24 chu kỳ) để thực hiện phép nhân cuối
     wire [31:0] z_t46;
     shift_reg #(.W(32), .D(24)) dly_z_46 (.clk(clk), .in(z_t22), .out(z_t46));
