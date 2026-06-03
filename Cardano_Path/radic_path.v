@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 module radic_path #(
-    parameter STAGES = 102
+    parameter STAGES = 123
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -128,7 +128,7 @@ module radic_path #(
     );
 
     // ---------------------------------------------------------
-    // T = 56 -> 102: TOẠ ĐỘ CỰC - GÓC (Phase)
+    // T = 56 -> 123: TOẠ ĐỘ CỰC - GÓC (Phase)
     // ---------------------------------------------------------
     wire [31:0] abs_Re = {1'b0, Re[30:0]};
     wire is_gt = (Im[30:0] > abs_Re[30:0]); // Tránh tràn số chia atan
@@ -142,35 +142,35 @@ module radic_path #(
         .out_valid(v_t70), .out_result(ratio), .status_zero(), .status_invalid()
     );
 
-    wire [31:0] atan_val; wire v_t98;
+    wire [31:0] atan_val; wire v_t119;
     fp_atan u_atan_phase (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t70), 
-        .in_operand_A(ratio), .out_valid(v_t98), .out_result(atan_val)
+        .in_operand_A(ratio), .out_valid(v_t119), .out_result(atan_val)
     );
 
-    wire is_gt_d98, re_sign_d98;
-    shift_reg #(.W(1), .D(42)) dly_is_gt (.clk(clk), .in(is_gt), .out(is_gt_d98));
-    shift_reg #(.W(1), .D(42)) dly_re_sign (.clk(clk), .in(Re[31]), .out(re_sign_d98));
+    wire is_gt_d119, re_sign_d119;
+    shift_reg #(.W(1), .D(63)) dly_is_gt (.clk(clk), .in(is_gt), .out(is_gt_d119));
+    shift_reg #(.W(1), .D(63)) dly_re_sign (.clk(clk), .in(Re[31]), .out(re_sign_d119));
 
     // Bộ ánh xạ tự động góc Phase theo đúng Quadrant
-    wire [31:0] phase_A = is_gt_d98 ? 32'h3FC90FDB : (re_sign_d98 ? 32'h40490FDB : 32'd0); // PI/2 hoặc PI
-    wire phase_is_sub = is_gt_d98 ^ re_sign_d98;
-    wire [31:0] Phase_out; wire v_t102;
+    wire [31:0] phase_A = is_gt_d119 ? 32'h3FC90FDB : (re_sign_d119 ? 32'h40490FDB : 32'd0); // PI/2 hoặc PI
+    wire phase_is_sub = is_gt_d119 ^ re_sign_d119;
+    wire [31:0] Phase_out; wire v_t123;
     fp_add_sub u_add_phase (
-        .clk(clk), .rst_n(rst_n), .in_valid(v_t98), .in_is_sub(phase_is_sub), 
+        .clk(clk), .rst_n(rst_n), .in_valid(v_t119), .in_is_sub(phase_is_sub), 
         .in_operand_A(phase_A), .in_operand_B(atan_val), 
-        .out_valid(v_t102), .out_result(Phase_out), .status_overflow(), .status_invalid(), .status_zero()
+        .out_valid(v_t123), .out_result(Phase_out), .status_overflow(), .status_invalid(), .status_zero()
     );
 
     // ---------------------------------------------------------
-    // ĐỒNG BỘ HOÁ ĐẦU RA TẠI T = 102
+    // ĐỒNG BỘ HOÁ ĐẦU RA TẠI T = 123
     // ---------------------------------------------------------
-    shift_reg #(.W(32), .D(46)) dly_x1 (.clk(clk), .in(x1), .out(x1_real));
-    shift_reg #(.W(32), .D(46)) dly_re (.clk(clk), .in(Re), .out(x2_real));
-    shift_reg #(.W(32), .D(46)) dly_im (.clk(clk), .in(Im), .out(x2_imag));
-    shift_reg #(.W(32), .D(20)) dly_mag (.clk(clk), .in(Mag_raw), .out(x2_mag));
+    shift_reg #(.W(32), .D(67)) dly_x1 (.clk(clk), .in(x1), .out(x1_real));
+    shift_reg #(.W(32), .D(67)) dly_re (.clk(clk), .in(Re), .out(x2_real));
+    shift_reg #(.W(32), .D(67)) dly_im (.clk(clk), .in(Im), .out(x2_imag));
+    shift_reg #(.W(32), .D(41)) dly_mag (.clk(clk), .in(Mag_raw), .out(x2_mag));
 
     assign x2_phase  = Phase_out;
-    assign out_valid = v_t102;
+    assign out_valid = v_t123;
 
 endmodule

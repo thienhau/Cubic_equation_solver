@@ -172,18 +172,27 @@ module cardano_top #(
 
     assign fifo_pop = pre_valid_out;
     
-    // T = 52 -> 100: Nhánh 1 Bậc 2 (48 Chu kỳ)
+    // ==============================================================================
+    // T = 52 -> 100: NHÁNH 1 BẬC 2 (48 Chu kỳ)
+    // ==============================================================================
     wire v_quad;
     wire [31:0] q_x1, q_x2;
-    quad_path u_quad (.clk(clk), .rst_n(rst_n), .in_valid(en_quad), .b(b_52), .c(c_52), .d(d_52), .out_valid(v_quad), .x1(q_x1), .x2(q_x2));
+    quad_path #(.STAGES(48)) u_quad (
+        .clk(clk), .rst_n(rst_n), .in_valid(en_quad), 
+        .b(b_52), .c(c_52), .d(d_52), 
+        .out_valid(v_quad), .x1(q_x1), .x2(q_x2)
+    );
     
     wire [7:0] id_quad_out;
     shift_reg #(.W(8), .D(48)) dly_id_q (.clk(clk), .in(id_52), .out(id_quad_out));
 
-    // T = 52 -> 154: Nhánh 2 Radic NÂNG CẤP TỌA ĐỘ PHỨC (102 Chu kỳ)
+
+    // ==============================================================================
+    // T = 52 -> 175: NHÁNH 2 RADIC - CẬP NHẬT TRỄ GÓC PHỨC (123 Chu kỳ mới)
+    // ==============================================================================
     wire v_radic;
     wire [31:0] r_x1, r_x2_real, r_x2_imag, r_x2_mag, r_x2_phase;
-    radic_path u_radic (
+    radic_path #(.STAGES(123)) u_radic (
         .clk(clk), .rst_n(rst_n), .in_valid(en_radic), 
         .p(p_val), .q(q_val), .delta(delta_val), .offset(offset_val), 
         .out_valid(v_radic), 
@@ -192,16 +201,24 @@ module cardano_top #(
     );
     
     wire [7:0] id_radic_out;
-    // CẬP NHẬT TRỄ ID THÀNH 102
-    shift_reg #(.W(8), .D(102)) dly_id_r (.clk(clk), .in(id_52), .out(id_radic_out));
+    // CẬP NHẬT TRỄ ĐỒNG BỘ ID THÀNH 123 CHU KỲ
+    shift_reg #(.W(8), .D(123)) dly_id_r (.clk(clk), .in(id_52), .out(id_radic_out));
 
-    // T = 52 -> 173: Nhánh 3 Trigon (121 Chu kỳ)
+
+    // ==============================================================================
+    // T = 52 -> 195: NHÁNH 3 TRIGON - LƯỢNG GIÁC TỐI ƯU (143 Chu kỳ mới)
+    // ==============================================================================
     wire v_trigon;
     wire [31:0] t_x1, t_x2, t_x3;
-    trigon_path u_trigon (.clk(clk), .rst_n(rst_n), .in_valid(en_trigon), .p(p_val), .q(q_val), .offset(offset_val), .out_valid(v_trigon), .x1(t_x1), .x2(t_x2), .x3(t_x3));
+    trigon_path #(.STAGES(143)) u_trigon (
+        .clk(clk), .rst_n(rst_n), .in_valid(en_trigon), 
+        .p(p_val), .q(q_val), .offset(offset_val), 
+        .out_valid(v_trigon), .x1(t_x1), .x2(t_x2), .x3(t_x3)
+    );
     
     wire [7:0] id_trigon_out;
-    shift_reg #(.W(8), .D(121)) dly_id_t (.clk(clk), .in(id_52), .out(id_trigon_out));
+    // CẬP NHẬT TRỄ ĐỒNG BỘ ID THÀNH 143 CHU KỲ
+    shift_reg #(.W(8), .D(143)) dly_id_t (.clk(clk), .in(id_52), .out(id_trigon_out));
 
     // T = * -> *: Bộ trọng tài Out-of-Order CẬP NHẬT ĐỘ RỘNG THÀNH 202 BITS
     wire quad_empty, radic_empty, trigon_empty;

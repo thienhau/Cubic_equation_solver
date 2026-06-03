@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 module trigon_path #(
-    parameter STAGES = 121
+    parameter STAGES = 143
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -58,7 +58,7 @@ module trigon_path #(
         .status_zero(), .status_invalid()
     );
     
-    // T = 40 -> 75: acos
+    // T = 40 -> 98: acos
     wire [31:0] theta; wire v_th;
     fp_acos u_acos (
         .clk(clk), .rst_n(rst_n), .in_valid(v_arg), 
@@ -66,7 +66,7 @@ module trigon_path #(
         .out_valid(v_th), .out_result(theta)
     );
 
-    // T = 75 -> 79: t1 = theta / 3
+    // T = 98 -> 102: t1 = theta / 3
     wire [31:0] t1; wire v_t1;
     fp_mul u_mul_t1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_th), 
@@ -75,7 +75,7 @@ module trigon_path #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    // T = 79 -> 83: Phân tán pha (Gập góc để luôn < 2.1 rad)
+    // T = 102 -> 106: Phân tán pha (Gập góc để luôn < 2.1 rad)
     wire [31:0] t2, t3;
     wire v_t2;
     // t2 = 2PI/3 - t1 
@@ -93,7 +93,7 @@ module trigon_path #(
         .status_overflow(), .status_invalid(), .status_zero()
     );
     
-    // T = 79 -> 112: c1
+    // T = 102 -> 134: c1
     wire [31:0] c1; wire v_c1;
     fp_cos u_cos1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), 
@@ -101,7 +101,7 @@ module trigon_path #(
         .out_valid(v_c1), .out_result(c1)
     );
 
-    // T = 83 -> 116: c2 và c3
+    // T = 106 -> 138: c2 và c3
     wire [31:0] c2, c3; wire v_c2;
     fp_cos u_cos2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t2), 
@@ -115,39 +115,41 @@ module trigon_path #(
         .out_valid(), .out_result(c3)
     );
 
-    // Đồng bộ chờ FMA ở chu kỳ T = 116
+    // Đồng bộ chờ FMA ở chu kỳ T = 138
     wire [31:0] c1_dly4;
     shift_reg #(.W(32), .D(4)) dc1 (.clk(clk), .in(c1), .out(c1_dly4));
 
     wire [31:0] r = {val_2[31], val_2[30:23] + 8'd1, val_2[22:0]};
-    wire [31:0] r_dly94; 
-    shift_reg #(.W(32), .D(94)) dr94 (.clk(clk), .in(r), .out(r_dly94));
+    wire [31:0] r_dly116;
+    shift_reg #(.W(32), .D(116)) dr116 (.clk(clk), .in(r), .out(r_dly116));
     
-    wire [31:0] off_dly116;
-    shift_reg #(.W(32), .D(116)) doff (.clk(clk), .in(offset), .out(off_dly116));
-    wire [31:0] neg_off = {~off_dly116[31], off_dly116[30:0]};
+    wire [31:0] off_dly138;
+    shift_reg #(.W(32), .D(138)) doff (.clk(clk), .in(offset), .out(off_dly138));
     
-    // T = 116 -> 121: Ghép r*cos - offset
+    wire [31:0] neg_off = {~off_dly138[31], off_dly138[30:0]};
+    
+    // T = 138 -> 143: Ghép r*cos - offset
     fp_fma u_fma_x1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
-        .in_operand_A(r_dly94), .in_operand_B(c1_dly4), .in_operand_C(neg_off), 
+        .in_operand_A(r_dly116), .in_operand_B(c1_dly4), .in_operand_C(neg_off), 
         .out_valid(out_valid), .out_result(x1),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
+
     fp_fma u_fma_x2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
-        .in_operand_A(r_dly94), .in_operand_B(c2), .in_operand_C(neg_off), 
+        .in_operand_A(r_dly116), .in_operand_B(c2), .in_operand_C(neg_off), 
         .out_valid(), .out_result(x2),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
-    wire [31:0] neg_r_dly94 = {~r_dly94[31], r_dly94[30:0]};
+
+    wire [31:0] neg_r_dly116 = {~r_dly116[31], r_dly116[30:0]};
     
     fp_fma u_fma_x3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
-        .in_operand_A(neg_r_dly94), .in_operand_B(c3), .in_operand_C(neg_off), 
+        .in_operand_A(neg_r_dly116), .in_operand_B(c3), .in_operand_C(neg_off), 
         .out_valid(), .out_result(x3),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
+
 endmodule
