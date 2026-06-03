@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 module trigon_path #(
-    parameter STAGES = 143
+    parameter STAGES = 147 // Tăng lên 147 chu kỳ do thêm tầng tính c2
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -19,7 +19,7 @@ module trigon_path #(
         .out_valid(v_p3), .out_result(p_third),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
+
     wire [31:0] num; wire v_num;
     fp_mul u_mul_num (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid), 
@@ -27,7 +27,7 @@ module trigon_path #(
         .out_valid(v_num), .out_result(num),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
-    
+
     // T = 4 -> 22: Căn val_2
     wire [31:0] val_2; wire v_v2;
     fp_sqrt u_sq_v2 (
@@ -39,7 +39,7 @@ module trigon_path #(
     wire [31:0] p_dly22, num_dly22;
     shift_reg #(.W(32), .D(22)) dp22 (.clk(clk), .in(p), .out(p_dly22));
     shift_reg #(.W(32), .D(22)) dn22 (.clk(clk), .in(num), .out(num_dly22));
-    
+
     // T = 22 -> 26: denom = p * val_2
     wire [31:0] denom; wire v_den;
     fp_mul u_mul_den (
@@ -57,7 +57,7 @@ module trigon_path #(
         .out_valid(v_arg), .out_result(arg_val),
         .status_zero(), .status_invalid()
     );
-    
+
     // T = 40 -> 98: acos
     wire [31:0] theta; wire v_th;
     fp_acos u_acos (
@@ -75,25 +75,17 @@ module trigon_path #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    // T = 102 -> 106: Phân tán pha (Gập góc để luôn < 2.1 rad)
-    wire [31:0] t2, t3;
-    wire v_t2;
-    // t2 = 2PI/3 - t1 
-    fp_add_sub u_add_t2 (
-        .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b1), 
-        .in_operand_A(32'h40060A92), .in_operand_B(t1), 
-        .out_valid(v_t2), .out_result(t2),
-        .status_overflow(), .status_invalid(), .status_zero()
-    );
-    // t3 = PI/3 - t1 (Sinh ra góc cực nhỏ)
+    // T = 102 -> 106: Phân tán pha (Đã xóa nhánh t2)
+    wire [31:0] t3;
+    wire v_t3;
     fp_add_sub u_add_t3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), .in_is_sub(1'b1), 
         .in_operand_A(32'h3F860A92), .in_operand_B(t1), 
-        .out_valid(), .out_result(t3),
+        .out_valid(v_t3), .out_result(t3),
         .status_overflow(), .status_invalid(), .status_zero()
     );
-    
-    // T = 102 -> 134: c1
+
+    // T = 102 -> 134: Tính c1 = cos(t1)
     wire [31:0] c1; wire v_c1;
     fp_cos u_cos1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t1), 
@@ -101,53 +93,66 @@ module trigon_path #(
         .out_valid(v_c1), .out_result(c1)
     );
 
-    // T = 106 -> 138: c2 và c3
-    wire [31:0] c2, c3; wire v_c2;
-    fp_cos u_cos2 (
-        .clk(clk), .rst_n(rst_n), .in_valid(v_t2), 
-        .in_operand_A(t2), 
-        .out_valid(v_c2), .out_result(c2)
-    );
-    
+    // T = 106 -> 138: Tính c3 = cos(t3) (Đã xóa bộ u_cos2)
+    wire [31:0] c3; wire v_c3;
     fp_cos u_cos3 (
-        .clk(clk), .rst_n(rst_n), .in_valid(v_t2), 
+        .clk(clk), .rst_n(rst_n), .in_valid(v_t3), 
         .in_operand_A(t3), 
-        .out_valid(), .out_result(c3)
+        .out_valid(v_c3), .out_result(c3)
     );
 
-    // Đồng bộ chờ FMA ở chu kỳ T = 138
+    // Đồng bộ c1 chờ c3 ở chu kỳ T = 138
     wire [31:0] c1_dly4;
     shift_reg #(.W(32), .D(4)) dc1 (.clk(clk), .in(c1), .out(c1_dly4));
 
+    // ==============================================================================
+    // T = 138 -> 142: DÙNG ĐỊNH LÝ VIÈTE ĐỂ TÍNH c2 = c3 - c1
+    // ==============================================================================
+    wire [31:0] c2; wire v_c2;
+    fp_add_sub u_sub_c2 (
+        .clk(clk), .rst_n(rst_n), .in_valid(v_c3), .in_is_sub(1'b1), 
+        .in_operand_A(c3), .in_operand_B(c1_dly4), 
+        .out_valid(v_c2), .out_result(c2),
+        .status_overflow(), .status_invalid(), .status_zero()
+    );
+
+    // Đồng bộ c1 và c3 xuống chu kỳ T = 142 để chờ c2
+    wire [31:0] c1_t142, c3_t142;
+    shift_reg #(.W(32), .D(4)) dc1_142 (.clk(clk), .in(c1_dly4), .out(c1_t142));
+    shift_reg #(.W(32), .D(4)) dc3_142 (.clk(clk), .in(c3), .out(c3_t142));
+
+    // Đồng bộ r và offset xuống hội tụ ở chu kỳ T = 142
     wire [31:0] r = {val_2[31], val_2[30:23] + 8'd1, val_2[22:0]};
-    wire [31:0] r_dly116;
-    shift_reg #(.W(32), .D(116)) dr116 (.clk(clk), .in(r), .out(r_dly116));
+    wire [31:0] r_dly120;
+    shift_reg #(.W(32), .D(120)) dr120 (.clk(clk), .in(r), .out(r_dly120)); // 142 - 22 = 120
     
-    wire [31:0] off_dly138;
-    shift_reg #(.W(32), .D(138)) doff (.clk(clk), .in(offset), .out(off_dly138));
+    wire [31:0] off_dly142;
+    shift_reg #(.W(32), .D(142)) doff (.clk(clk), .in(offset), .out(off_dly142));
     
-    wire [31:0] neg_off = {~off_dly138[31], off_dly138[30:0]};
+    wire [31:0] neg_off = {~off_dly142[31], off_dly142[30:0]};
     
-    // T = 138 -> 143: Ghép r*cos - offset
+    // ==============================================================================
+    // T = 142 -> 147: Ghép r*cos - offset
+    // ==============================================================================
     fp_fma u_fma_x1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
-        .in_operand_A(r_dly116), .in_operand_B(c1_dly4), .in_operand_C(neg_off), 
+        .in_operand_A(r_dly120), .in_operand_B(c1_t142), .in_operand_C(neg_off), 
         .out_valid(out_valid), .out_result(x1),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
     fp_fma u_fma_x2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
-        .in_operand_A(r_dly116), .in_operand_B(c2), .in_operand_C(neg_off), 
+        .in_operand_A(r_dly120), .in_operand_B(c2), .in_operand_C(neg_off), 
         .out_valid(), .out_result(x2),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    wire [31:0] neg_r_dly116 = {~r_dly116[31], r_dly116[30:0]};
+    wire [31:0] neg_r_dly120 = {~r_dly120[31], r_dly120[30:0]};
     
     fp_fma u_fma_x3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
-        .in_operand_A(neg_r_dly116), .in_operand_B(c3), .in_operand_C(neg_off), 
+        .in_operand_A(neg_r_dly120), .in_operand_B(c3_t142), .in_operand_C(neg_off), 
         .out_valid(), .out_result(x3),
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
