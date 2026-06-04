@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 module trigon_path #(
-    parameter STAGES = 147 // Tăng lên 147 chu kỳ do thêm tầng tính c2
+    parameter STAGES = 147
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -75,7 +75,7 @@ module trigon_path #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    // T = 102 -> 106: Phân tán pha (Đã xóa nhánh t2)
+    // T = 102 -> 106: Phân tán pha
     wire [31:0] t3;
     wire v_t3;
     fp_add_sub u_add_t3 (
@@ -93,7 +93,7 @@ module trigon_path #(
         .out_valid(v_c1), .out_result(c1)
     );
 
-    // T = 106 -> 138: Tính c3 = cos(t3) (Đã xóa bộ u_cos2)
+    // T = 106 -> 138: Tính c3 = cos(t3)
     wire [31:0] c3; wire v_c3;
     fp_cos u_cos3 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t3), 
@@ -105,9 +105,7 @@ module trigon_path #(
     wire [31:0] c1_dly4;
     shift_reg #(.W(32), .D(4)) dc1 (.clk(clk), .in(c1), .out(c1_dly4));
 
-    // ==============================================================================
-    // T = 138 -> 142: DÙNG ĐỊNH LÝ VIÈTE ĐỂ TÍNH c2 = c3 - c1
-    // ==============================================================================
+    // T = 138 -> 142: Dùng định lý vi-ét tính c2 = c3 - c1
     wire [31:0] c2; wire v_c2;
     fp_add_sub u_sub_c2 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c3), .in_is_sub(1'b1), 
@@ -121,7 +119,7 @@ module trigon_path #(
     shift_reg #(.W(32), .D(4)) dc1_142 (.clk(clk), .in(c1_dly4), .out(c1_t142));
     shift_reg #(.W(32), .D(4)) dc3_142 (.clk(clk), .in(c3), .out(c3_t142));
 
-    // Đồng bộ r và offset xuống hội tụ ở chu kỳ T = 142
+    // Đồng bộ r và offset ở chu kỳ T = 142
     wire [31:0] r = {val_2[31], val_2[30:23] + 8'd1, val_2[22:0]};
     wire [31:0] r_dly120;
     shift_reg #(.W(32), .D(120)) dr120 (.clk(clk), .in(r), .out(r_dly120)); // 142 - 22 = 120
@@ -131,9 +129,7 @@ module trigon_path #(
     
     wire [31:0] neg_off = {~off_dly142[31], off_dly142[30:0]};
     
-    // ==============================================================================
     // T = 142 -> 147: Ghép r*cos - offset
-    // ==============================================================================
     fp_fma u_fma_x1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_c2), 
         .in_operand_A(r_dly120), .in_operand_B(c1_t142), .in_operand_C(neg_off), 

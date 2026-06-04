@@ -74,9 +74,7 @@ module radic_path #(
         .out_valid(), .out_result(uv_diff), .status_overflow(), .status_invalid(), .status_zero()
     );
 
-    // ---------------------------------------------------------
-    // T = 52 -> 56: TOẠ ĐỘ ĐỀ CÁC (Real & Imaginary)
-    // ---------------------------------------------------------
+    // T = 52 -> 56: Toạ độ đề các (Real & Imaginary)
     wire [31:0] x1; wire v_t56;
     fp_add_sub u_add_x1 (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t52), .in_is_sub(1'b1), 
@@ -99,9 +97,7 @@ module radic_path #(
         .out_valid(), .out_result(Im), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    // ---------------------------------------------------------
-    // T = 56 -> 82: TOẠ ĐỘ CỰC - BÁN KÍNH (Magnitude)
-    // ---------------------------------------------------------
+    // T = 56 -> 82: Toạ độ cực - bán kính (Magnitude)
     wire [31:0] re_sq, im_sq; wire v_t60;
     fp_mul u_mul_re_sq (
         .clk(clk), .rst_n(rst_n), .in_valid(v_t56), 
@@ -127,9 +123,7 @@ module radic_path #(
         .in_operand_A(sum_sq), .out_valid(v_t82), .out_result(Mag_raw), .status_invalid()
     );
 
-    // ---------------------------------------------------------
-    // T = 56 -> 123: TOẠ ĐỘ CỰC - GÓC (Phase)
-    // ---------------------------------------------------------
+    // T = 56 -> 123: Toạ độ cực - gó  (Phase)
     wire [31:0] abs_Re = {1'b0, Re[30:0]};
     wire is_gt = (Im[30:0] > abs_Re[30:0]); // Tránh tràn số chia atan
     
@@ -162,9 +156,7 @@ module radic_path #(
         .out_valid(v_t123), .out_result(Phase_out), .status_overflow(), .status_invalid(), .status_zero()
     );
 
-    // ---------------------------------------------------------
-    // ĐỒNG BỘ HOÁ ĐẦU RA TẠI T = 123
-    // ---------------------------------------------------------
+    // Đồng bộ đầu ra tại T = 123
     shift_reg #(.W(32), .D(67)) dly_x1 (.clk(clk), .in(x1), .out(x1_real));
     shift_reg #(.W(32), .D(67)) dly_re (.clk(clk), .in(Re), .out(x2_real));
     shift_reg #(.W(32), .D(67)) dly_im (.clk(clk), .in(Im), .out(x2_imag));

@@ -17,12 +17,14 @@ module fp_fma #(
     output reg         status_invalid,
     output reg         status_zero
 );
-    // --- STAGE 1: Setup ---
+
+    // Khai báo các thanh ghi lưu trữ thông tin trung gian cho tầng pipeline thứ nhất
     reg s1_valid, s1_sign_mul, s1_sign_c, s1_is_zero_mul, s1_is_zero_c;
     reg signed [9:0] s1_exp_mul, s1_exp_c;
     reg [23:0] s1_mant_a, s1_mant_b, s1_mant_c;
     reg s1_invalid;
 
+    // Kiểm tra các trạng thái ngoại lệ trực tiếp từ toán hạng đầu vào
     wire a_is_nan  = (&in_operand_A[30:23]) && (|in_operand_A[22:0]);
     wire b_is_nan  = (&in_operand_B[30:23]) && (|in_operand_B[22:0]);
     wire c_is_nan  = (&in_operand_C[30:23]) && (|in_operand_C[22:0]);
@@ -32,12 +34,14 @@ module fp_fma #(
     wire mul_is_inf = a_is_inf || b_is_inf;
     wire mul_is_zero = (~|in_operand_A[30:23]) || (~|in_operand_B[30:23]);
     
+    // Xác định dấu logic của phép nhân và các điều kiện báo lỗi invalid toán hạng
     wire fma_sign_mul = in_operand_A[31] ^ in_operand_B[31];
     wire inf_minus_inf = (a_is_inf || b_is_inf) && c_is_inf && (fma_sign_mul ^ in_operand_C[31]);
     wire fma_invalid_cond = (a_is_inf && (~|in_operand_B[30:23])) ||
                             (b_is_inf && (~|in_operand_A[30:23])) || 
                             a_is_nan || b_is_nan || c_is_nan || inf_minus_inf;
 
+    // T = 0 -> 1: Thực hiện giải mã toán hạng, tính số mũ sơ bộ và chèn hidden bit
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s1_valid       <= 0;
@@ -62,13 +66,14 @@ module fp_fma #(
         end
     end
 
-    // --- STAGE 2: Mul & Align ---
+    // Khai báo các thanh ghi lưu trữ thông tin cho tầng pipeline thứ hai
     reg s2_valid, s2_sign_mul, s2_sign_c;
     reg signed [9:0] s2_exp_max;
     reg [47:0] s2_mant_mul;
     reg [72:0] s2_mant_c_aligned;
     reg s2_invalid;
 
+    // T = 1 -> 2: Nhân mantissa đồng thời căn chỉnh dấu chấm động cho toán hạng C
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s2_valid          <= 0;
@@ -101,12 +106,13 @@ module fp_fma #(
         end
     end
 
-    // --- STAGE 3: Wide Add ---
+    // Khai báo các thanh ghi lưu trữ thông tin cho tầng pipeline thứ ba
     reg s3_valid, s3_sign_res;
     reg signed [9:0] s3_exp_max;
     reg [72:0] s3_wide_sum;
     reg s3_invalid;
     
+    // T = 2 -> 3: Thực hiện phép cộng hoặc trừ góc mantissa trên dải bit mở rộng
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s3_valid    <= 0;
@@ -132,7 +138,7 @@ module fp_fma #(
         end
     end
 
-    // --- STAGE 4: LZA Anticipation ---
+    // Khai báo các thanh ghi lưu trữ thông tin cho tầng pipeline thứ tư
     reg s4_valid, s4_sign_res;
     reg signed [9:0] s4_exp_res;
     reg [72:0] s4_wide_sum;
@@ -140,6 +146,8 @@ module fp_fma #(
     reg s4_invalid;
     
     integer k; reg [6:0] lza_shift;
+    
+    // T = 3 -> 4: Dự đoán số lượng bit zero dẫn đầu phục vụ chuẩn hóa kết quả
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s4_valid     <= 0; s4_sign_res  <= 0;
@@ -165,23 +173,25 @@ module fp_fma #(
         end
     end
 
-    // --- STAGE 5: Pack & Rounding (GRS) ---
+    // T = 4 -> 5: Thực hiện dịch bit chuẩn hóa, trích xuất grs và thực hiện làm tròn
     wire [72:0] shifted_sum = s4_wide_sum << s4_lza_shift;
     
-    // MSB luôn ở vị trí 72. Fraction 23 bit ở [71:49].
+    // Khai báo các bit guard, round, sticky từ mantissa đã được dịch chỉnh chuẩn hóa
     wire G = shifted_sum[48];
     wire R = shifted_sum[47];
     wire S = |shifted_sum[46:0];
     wire round_up = G & (R | S | shifted_sum[49]);
     
-    // Cộng bit làm tròn. Đệm 1 bit 0 ở đầu để bắt tràn (carry-out).
+    // Thực hiện cộng bit làm tròn và xác định số mũ cuối cùng sau hiệu chỉnh
     wire [24:0] rounded_mant = {1'b0, shifted_sum[72:49]} + round_up;
     wire signed [10:0] final_exp = s4_exp_res + rounded_mant[24];
     
+    // Phân tích trạng thái tràn số mũ dựa trên khung giới hạn định dạng đơn chính xác
     wire fma_overflow  = s4_valid & (final_exp >= 11'sd255) & ~s4_invalid;
     wire fma_underflow = s4_valid & (s4_wide_sum != 0) & (final_exp <= 11'sd0) & ~s4_invalid;
     wire fma_zero      = s4_valid & (s4_wide_sum == 0 || fma_underflow) & ~s4_invalid;
 
+    // Quản lý việc đóng gói dữ liệu và cập nhật các cờ trạng thái ngõ ra module
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             out_valid        <= 0; out_result       <= 0;
@@ -191,21 +201,29 @@ module fp_fma #(
             out_valid <= s4_valid;
             if (s4_valid) begin
                 if (s4_invalid) begin
-                    out_result       <= {s4_sign_res, 8'hFF, 23'h3FFFFF}; // Quiet NaN
-                    status_overflow  <= 1'b0; status_underflow <= 1'b0;
-                    status_invalid   <= 1'b1; status_zero      <= 1'b0;
+                    out_result       <= {s4_sign_res, 8'hFF, 23'h3FFFFF};
+                    status_overflow  <= 1'b0; 
+                    status_underflow <= 1'b0;
+                    status_invalid   <= 1'b1; 
+                    status_zero      <= 1'b0;
                 end else if (fma_overflow) begin
                     out_result       <= {s4_sign_res, 8'hFF, 23'd0};
-                    status_overflow  <= 1'b1; status_underflow <= 1'b0;
-                    status_invalid   <= 1'b0; status_zero      <= 1'b0;
+                    status_overflow  <= 1'b1; 
+                    status_underflow <= 1'b0;
+                    status_invalid   <= 1'b0; 
+                    status_zero      <= 1'b0;
                 end else if (fma_zero) begin
                     out_result       <= 32'd0;
-                    status_overflow  <= 1'b0; status_underflow <= fma_underflow;
-                    status_invalid   <= 1'b0; status_zero      <= 1'b1;
+                    status_overflow  <= 1'b0; 
+                    status_underflow <= fma_underflow;
+                    status_invalid   <= 1'b0; 
+                    status_zero      <= 1'b1;
                 end else begin
                     out_result       <= {s4_sign_res, final_exp[7:0], rounded_mant[22:0]};
-                    status_overflow  <= 1'b0; status_underflow <= 1'b0;
-                    status_invalid   <= 1'b0; status_zero      <= 1'b0;
+                    status_overflow  <= 1'b0; 
+                    status_underflow <= 1'b0;
+                    status_invalid   <= 1'b0; 
+                    status_zero      <= 1'b0;
                 end
             end
         end

@@ -61,15 +61,15 @@ module cardano_top #(
         .empty(), .full()
     );
 
-    wire out_is_quad      = meta_out[1];
+    wire out_is_quad = meta_out[1];
     wire out_delta_is_pos = meta_out[0];
 
-    wire en_quad   = pre_valid_out & is_quad_52;
-    wire en_radic  = pre_valid_out & ~is_quad_52 & delta_is_pos;
+    wire en_quad = pre_valid_out & is_quad_52;
+    wire en_radic = pre_valid_out & ~is_quad_52 & delta_is_pos;
     wire en_trigon = pre_valid_out & ~is_quad_52 & ~delta_is_pos;
 
     // ==============================================================================
-    // T = 52 -> 100: NHÁNH 1 BẬC 2 (48 Chu kỳ)
+    // T = 52 -> 100: NHÁNH 1 QUAD (48 Chu kỳ)
     // ==============================================================================
     wire v_quad;
     wire [31:0] q_x1, q_x2;
@@ -84,7 +84,7 @@ module cardano_top #(
 
 
     // ==============================================================================
-    // T = 52 -> 175: NHÁNH 2 RADIC - CẬP NHẬT TRỄ GÓC PHỨC (123 Chu kỳ mới)
+    // T = 52 -> 175: NHÁNH 2 RADIC (123 Chu kỳ)
     // ==============================================================================
     wire v_radic;
     wire [31:0] r_x1, r_x2_real, r_x2_imag, r_x2_mag, r_x2_phase;
@@ -101,7 +101,7 @@ module cardano_top #(
 
 
     // ==============================================================================
-    // T = 52 -> 199: NHÁNH 3 TRIGON - CẬP NHẬT 147 CHU KỲ MỚI
+    // T = 52 -> 199: NHÁNH 3 TRIGON (147 Chu kỳ)
     // ==============================================================================
     wire v_trigon;
     wire [31:0] t_x1, t_x2, t_x3;
@@ -143,7 +143,7 @@ module cardano_top #(
 
     wire [201:0] final_data = pop_quad ? quad_data_out : (pop_radic ? radic_data_out : trigon_data_out);
 
-    // MÁP LẠI TÍN HIỆU ĐẦU RA (Un-packing 202 bits)
+    // Map lại tín hiệu đầu ra (Un-packing 202 bits)
     assign trans_id_out = final_data[201:194];
     assign num_roots    = final_data[193:192];
     assign x1           = final_data[191:160];

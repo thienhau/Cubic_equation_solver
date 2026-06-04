@@ -4,7 +4,7 @@ module pade_sqrt_rom #(
     parameter STAGES = 1
 )(
     input  wire        clk,
-    input  wire [11:0] addr, // Cập nhật lên 12-bit
+    input  wire [11:0] addr, // Đia chỉ 12bit
     
     output reg  [31:0] data_out
 );
@@ -4123,7 +4123,7 @@ module pade_cbrt_rom #(
     parameter STAGES = 1
 )(
     input  wire        clk,
-    input  wire [11:0] addr, // Cập nhật lên 12-bit
+    input  wire [11:0] addr, // Địa chỉ 12bit
     
     output reg  [31:0] data_out
 );

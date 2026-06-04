@@ -15,9 +15,8 @@ module fp_div #(
     output reg         status_zero,
     output reg         status_invalid
 );
-    // ==============================================================================
-    // GIẢI MÃ CÁC TRƯỜNG HỢP ĐẶC BIỆT
-    // ==============================================================================
+
+    // Giải mã các trạng thái đặc biệt ban đầu của hai toán hạng đầu vào
     wire is_zero_A = ~|in_operand_A[30:23];
     wire is_zero_B = ~|in_operand_B[30:23];
     wire is_inf_A  = (&in_operand_A[30:23]) && (~|in_operand_A[22:0]);
@@ -25,25 +24,23 @@ module fp_div #(
     wire is_nan_A  = (&in_operand_A[30:23]) && (|in_operand_A[22:0]);
     wire is_nan_B  = (&in_operand_B[30:23]) && (|in_operand_B[22:0]);
 
-    // Thêm bit ẩn (hidden bit) vào mantissa
-    wire [24:0] mant_a = {1'b0, 1'b1, in_operand_A[22:0]}; // Định dạng 25-bit để chống tràn khi dịch
+    // Bổ sung bit ẩn số 1 vào trường mantissa của cấu trúc toán hạng
+    wire [24:0] mant_a = {1'b0, 1'b1, in_operand_A[22:0]};
     wire [24:0] mant_b = {1'b0, 1'b1, in_operand_B[22:0]};
 
-    // ==============================================================================
-    // STAGE 1: Exponent, Dấu, Cờ Đặc Biệt & 3 BIT ĐẦU CỦA PHÉP CHIA
-    // ==============================================================================
+    // Khai báo tập thanh ghi trung gian đồng bộ cho tầng xử lý thứ nhất
     reg        s1_valid, s1_sign, s1_is_zero, s1_is_invalid, s1_is_nan, s1_is_inf;
-    reg [8:0]  s1_exp;       // 9-bit có dấu để bắt Under/Overflow
+    reg [8:0]  s1_exp;
     reg [24:0] s1_rem, s1_div;
-    reg [26:0] s1_q;         // Mở rộng Q lên 27 bit
+    reg [26:0] s1_q;
     reg [31:0] s1_nan_dly;
 
     reg [24:0] rem_s1_0, rem_s1_1, rem_s1_2;
     reg [2:0]  q_s1;
 
-    // Logic tổ hợp cho 3 bước trừ của Stage 1
+    // Logic tổ hợp tính toán sớm 3 vòng lặp thương số đầu tiên
     always @(*) begin
-        // Vòng lặp 0
+        // Vòng lặp tính toán thứ 0
         if (mant_a >= mant_b) begin
             rem_s1_0 = mant_a - mant_b;
             q_s1[2]  = 1'b1;
@@ -51,7 +48,7 @@ module fp_div #(
             rem_s1_0 = mant_a;
             q_s1[2]  = 1'b0;
         end
-        // Vòng lặp 1
+        // Vòng lặp tính toán thứ 1
         if ({rem_s1_0[23:0], 1'b0} >= mant_b) begin
             rem_s1_1 = {rem_s1_0[23:0], 1'b0} - mant_b;
             q_s1[1]  = 1'b1;
@@ -59,7 +56,7 @@ module fp_div #(
             rem_s1_1 = {rem_s1_0[23:0], 1'b0};
             q_s1[1]  = 1'b0;
         end
-        // Vòng lặp 2
+        // Vòng lặp tính toán thứ 2
         if ({rem_s1_1[23:0], 1'b0} >= mant_b) begin
             rem_s1_2 = {rem_s1_1[23:0], 1'b0} - mant_b;
             q_s1[0]  = 1'b1;
@@ -69,6 +66,7 @@ module fp_div #(
         end
     end
 
+    // T = 0 -> 1: Cập nhật cờ ngoại lệ, tính toán dấu và gán giá trị 3 bit thương đầu tiên
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s1_valid <= 0; s1_sign <= 0; s1_exp <= 0;
@@ -78,10 +76,9 @@ module fp_div #(
         end else begin
             s1_valid <= in_valid;
             if (in_valid) begin
-                // Cờ đặc biệt chi tiết hơn chuẩn IEEE 754
                 s1_is_nan     <= is_nan_A || is_nan_B || (is_zero_A && is_zero_B) || (is_inf_A && is_inf_B);
                 s1_is_invalid <= is_nan_A || is_nan_B || (is_zero_A && is_zero_B) || (is_inf_A && is_inf_B);
-                s1_is_inf     <= (is_inf_A && !is_inf_B) || (!is_zero_A && is_zero_B); // Chia cho 0 -> Inf
+                s1_is_inf     <= (is_inf_A && !is_inf_B) || (!is_zero_A && is_zero_B);
                 s1_is_zero    <= (is_zero_A && !is_zero_B) || (!is_inf_A && is_inf_B);
                 s1_nan_dly    <= is_nan_A ? in_operand_A : in_operand_B;
 
@@ -90,14 +87,12 @@ module fp_div #(
                 
                 s1_rem  <= rem_s1_2;
                 s1_div  <= mant_b;
-                s1_q    <= {24'd0, q_s1}; // Nạp 3 bit đầu tiên
+                s1_q    <= {24'd0, q_s1};
             end
         end
     end
 
-    // ==============================================================================
-    // STAGE 2 đến 13: 12 tầng pipeline, mỗi tầng 2 bit (Tổng 24 bit)
-    // ==============================================================================
+    // Khai báo mảng cấu trúc hàng đợi pipeline phân tầng từ Stage 2 đến Stage 13
     reg        s_valid [2:13]; reg        s_sign [2:13]; reg [8:0]  s_exp  [2:13];
     reg        s_zero  [2:13]; reg        s_inv  [2:13]; reg        s_inf  [2:13];
     reg        s_nan   [2:13]; reg [31:0] s_nan_data [2:13];
@@ -107,6 +102,7 @@ module fp_div #(
     reg [24:0] t_rem;
     reg [1:0]  t_q; 
 
+    // T = 1 -> 13: Tiến trình chia lặp khôi phục số dư qua 12 tầng pipeline, 2 bit mỗi tầng
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (i = 2; i <= 13; i = i + 1) begin
@@ -116,7 +112,7 @@ module fp_div #(
                 s_nan[i] <= 0; s_nan_data[i] <= 0;
             end
         end else begin
-            // Stage 2
+            // Xử lý logic tại tầng thứ 2 của bộ pipeline chia dữ liệu
             s_valid[2] <= s1_valid; s_sign[2] <= s1_sign; s_exp[2] <= s1_exp;
             s_zero[2] <= s1_is_zero; s_inv[2] <= s1_is_invalid; s_inf[2] <= s1_is_inf;
             s_nan[2] <= s1_is_nan; s_nan_data[2] <= s1_nan_dly; s_div[2] <= s1_div;
@@ -130,9 +126,9 @@ module fp_div #(
                 end
             end
             s_rem[2] <= t_rem;
-            s_q[2]   <= {s1_q[24:0], t_q}; // Dịch trái dồn dần Quotient
+            s_q[2]   <= {s1_q[24:0], t_q};
             
-            // Stage 3 đến 13
+            // Lặp chuyển tiếp dữ liệu đồng bộ cho các tầng kế cận tiếp theo từ 3 đến 13
             for (i = 3; i <= 13; i = i + 1) begin
                 s_valid[i]    <= s_valid[i-1]; s_sign[i]     <= s_sign[i-1];
                 s_exp[i]      <= s_exp[i-1];   s_zero[i]     <= s_zero[i-1];
@@ -154,24 +150,22 @@ module fp_div #(
         end
     end
 
-    // ==============================================================================
-    // STAGE 14: Lấy GRS, Normalization và Round-to-Nearest-Even
-    // ==============================================================================
+    // Ghép nối dây để đọc trạng thái dữ liệu từ tầng pipeline thứ 13
     wire        s14_valid = s_valid[13];
     wire        s14_sign  = s_sign[13];
     wire [8:0]  s14_exp   = s_exp[13];
     wire [26:0] s14_q     = s_q[13];
     
-    wire        sticky_bit = (s_rem[13] != 25'd0); // Nếu còn phần dư -> S = 1
+    // Kiểm tra sự tồn tại của số dư cuối cùng để thiết lập bit sticky phục vụ làm tròn
+    wire        sticky_bit = (s_rem[13] != 25'd0);
 
     reg [23:0]  frac_with_hidden;
     reg         G, R, S_bit, LSB;
     reg [8:0]   norm_exp;
 
+    // T = 13 -> 14: Phân tích khung bit thương số để chuẩn hóa dữ liệu mantissa và exp
     always @(*) begin
-        // Chuẩn hóa tùy thuộc vào bit cao nhất [26] (đại diện cho 2^0)
         if (s14_q[26]) begin 
-            // Dạng 1.xxxx
             frac_with_hidden = {1'b1, s14_q[25:3]};
             LSB   = s14_q[3];
             G     = s14_q[2];
@@ -179,7 +173,6 @@ module fp_div #(
             S_bit = s14_q[0] | sticky_bit;
             norm_exp = s14_exp;
         end else begin
-            // Dạng 0.1xxxx (Cần dịch trái 1 bit)
             frac_with_hidden = {1'b1, s14_q[24:2]};
             LSB   = s14_q[2];
             G     = s14_q[1];
@@ -189,15 +182,16 @@ module fp_div #(
         end
     end
 
-    // Thuật toán làm tròn Round to Nearest, Ties to Even
+    // Thực hiện cấu trúc logic thuật toán làm tròn sang số chẵn gần nhất (RNE)
     wire round_up = G & (R | S_bit | LSB);
     wire [24:0] rounded_frac_full = {1'b0, frac_with_hidden} + round_up;
     
     reg [22:0] final_frac;
     reg [8:0]  final_exp;
     
+    // Hiệu chỉnh tràn bit mantissa sau khi cộng làm tròn lên số mũ tương ứng
     always @(*) begin
-        if (rounded_frac_full[24]) begin // Xảy ra tràn khi cộng 1 làm tròn (vd: 1.111 -> 10.000)
+        if (rounded_frac_full[24]) begin 
             final_frac = rounded_frac_full[23:1];
             final_exp  = norm_exp + 1'b1;
         end else begin
@@ -206,6 +200,7 @@ module fp_div #(
         end
     end
 
+    // T = 14: Đóng gói khung kết quả cuối cùng, kiểm tra tràn lỗi dưới/trên và xuất ngõ ra
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             out_valid <= 0; out_result <= 0;
@@ -214,32 +209,39 @@ module fp_div #(
             out_valid <= s14_valid;
             if (s14_valid) begin
                 if (s_nan[13]) begin
-                    out_result     <= s_nan_data[13];
-                    status_invalid <= 1'b0; status_zero <= 1'b0;
+                    out_result <= s_nan_data[13];
+                    status_invalid <= 1'b0; 
+                    status_zero <= 1'b0;
                 end else if (s_inv[13]) begin
-                    out_result     <= {s14_sign, 8'hFF, 23'h3FFFFF}; // Quiet NaN
-                    status_invalid <= 1'b1; status_zero <= 1'b0;
+                    out_result <= {s14_sign, 8'hFF, 23'h3FFFFF};
+                    status_invalid <= 1'b1; 
+                    status_zero <= 1'b0;
                 end else if (s_inf[13]) begin
-                    out_result     <= {s14_sign, 8'hFF, 23'd0}; // Infinity
-                    status_invalid <= 1'b0; status_zero <= 1'b0;
+                    out_result <= {s14_sign, 8'hFF, 23'd0};
+                    status_invalid <= 1'b0; 
+                    status_zero <= 1'b0;
                 end else if (s_zero[13]) begin
-                    out_result     <= {s14_sign, 31'd0};
-                    status_zero    <= 1'b1; status_invalid <= 1'b0;
+                    out_result <= {s14_sign, 31'd0};
+                    status_zero <= 1'b1; 
+                    status_invalid <= 1'b0;
                 end else begin
-                    // Bắt lỗi Underflow / Overflow
                     if ($signed(final_exp) <= 0) begin
-                        out_result  <= {s14_sign, 31'd0}; // Underflow -> Flush to Zero
-                        status_zero <= 1'b1; status_invalid <= 1'b0;
+                        out_result <= {s14_sign, 31'd0};
+                        status_zero <= 1'b1; 
+                        status_invalid <= 1'b0;
                     end else if (final_exp >= 255) begin
-                        out_result  <= {s14_sign, 8'hFF, 23'd0}; // Overflow -> Infinity
-                        status_zero <= 1'b0; status_invalid <= 1'b0;
+                        out_result <= {s14_sign, 8'hFF, 23'd0};
+                        status_zero <= 1'b0; 
+                        status_invalid <= 1'b0;
                     end else begin
-                        out_result  <= {s14_sign, final_exp[7:0], final_frac};
-                        status_zero <= 1'b0; status_invalid <= 1'b0;
+                        out_result <= {s14_sign, final_exp[7:0], final_frac};
+                        status_zero <= 1'b0; 
+                        status_invalid <= 1'b0;
                     end
                 end
             end else begin
-                status_zero <= 0; status_invalid <= 0;
+                status_zero <= 0; 
+                status_invalid <= 0;
             end
         end
     end

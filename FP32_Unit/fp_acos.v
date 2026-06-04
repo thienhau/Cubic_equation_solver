@@ -24,8 +24,8 @@ module fp_acos #(
 
     // T = 0: Trị tuyệt đối và check dải biên
     wire [31:0] abs_x = {1'b0, in_operand_A[30:0]};
-    wire        sign_x_t0 = in_operand_A[31];
-    wire        is_upper_t0 = (abs_x > 32'h3F000000); // |x| > 0.5
+    wire sign_x_t0 = in_operand_A[31];
+    wire is_upper_t0 = (abs_x > 32'h3F000000); // |x| > 0.5
     
     // Lưu dấu bypass chuẩn ra cuối T=58
     wire sign_x_t58;
@@ -44,21 +44,21 @@ module fp_acos #(
     wire [31:0] half_sub_t4 = (sub_out_t4[30:23] == 8'd0) ? 32'd0 : 
                               {sub_out_t4[31], sub_out_t4[30:23] - 8'd1, sub_out_t4[22:0]};
 
-    // T = 4 -> 22: Căn bậc hai (18 chu kỳ thực tế)
+    // T = 4 -> 22: Căn bậc hai
     wire [31:0] sqrt_out_t22; wire v_sqrt_t22;
     fp_sqrt u_sqrt (
         .clk(clk), .rst_n(rst_n), .in_valid(v_sub_t4),
-        .in_operand_A(half_sub_t4), // Đã sửa tên port đầu vào sang in_operand_A
-        .out_valid(v_sqrt_t22), .out_result(sqrt_out_t22), .status_invalid()
+        .in_operand_A(half_sub_t4), .out_valid(v_sqrt_t22), 
+        .out_result(sqrt_out_t22), .status_invalid()
     );
 
     // Đồng bộ luồng dải dưới tại T = 22
     wire [31:0] abs_x_t22;
-    wire        is_upper_t22;
-    wire        v_orig_t22;
+    wire is_upper_t22;
+    wire v_orig_t22;
     shift_reg #(.W(32), .D(22)) dly_abs_x_22 (.clk(clk), .in(abs_x), .out(abs_x_t22));
-    shift_reg #(.W(1),  .D(22)) dly_upper_22 (.clk(clk), .in(is_upper_t0), .out(is_upper_t22));
-    shift_reg #(.W(1),  .D(22)) dly_valid_22 (.clk(clk), .in(in_valid), .out(v_orig_t22));
+    shift_reg #(.W(1), .D(22)) dly_upper_22 (.clk(clk), .in(is_upper_t0), .out(is_upper_t22));
+    shift_reg #(.W(1), .D(22)) dly_valid_22 (.clk(clk), .in(in_valid), .out(v_orig_t22));
 
     // MUX lựa chọn Z đầu vào cho đa thức tại T = 22
     wire [31:0] z_t22 = is_upper_t22 ? sqrt_out_t22 : abs_x_t22;
@@ -73,30 +73,48 @@ module fp_acos #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    // ==============================================================================
     // T = 26 -> 46: Chuỗi FMA tính lõi Arcsin (20 chu kỳ)
-    // ==============================================================================
     wire [31:0] f0_t31, f1_t36, f2_t41, poly_t46;
     wire v_f0_t31, v_f1_t36, v_f2_t41, v_poly_t46;
 
-    // THÊM VÀO ĐÂY: Đồng bộ biến 'u' đi qua các tầng Pipeline
+    // Đồng bộ biến 'u' đi qua các tầng Pipeline
     wire [31:0] u_t31, u_t36, u_t41;
     shift_reg #(.W(32), .D(5))  dly_u_31 (.clk(clk), .in(u_t26), .out(u_t31));
     shift_reg #(.W(32), .D(10)) dly_u_36 (.clk(clk), .in(u_t26), .out(u_t36));
     shift_reg #(.W(32), .D(15)) dly_u_41 (.clk(clk), .in(u_t26), .out(u_t41));
 
-    fp_fma u_fma_0 (.clk(clk), .rst_n(rst_n), .in_valid(v_u_t26), .in_operand_A(C4), .in_operand_B(u_t26), .in_operand_C(C3), .out_valid(v_f0_t31), .out_result(f0_t31), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_fma u_fma_0 (
+        .clk(clk), .rst_n(rst_n), .in_valid(v_u_t26), 
+        .in_operand_A(C4), .in_operand_B(u_t26), .in_operand_C(C3), 
+        .out_valid(v_f0_t31), .out_result(f0_t31), .status_overflow(), 
+        .status_underflow(), .status_invalid(), .status_zero()
+    );
     
     // Đổi B sang u_t31
-    fp_fma u_fma_1 (.clk(clk), .rst_n(rst_n), .in_valid(v_f0_t31), .in_operand_A(f0_t31), .in_operand_B(u_t31), .in_operand_C(C2), .out_valid(v_f1_t36), .out_result(f1_t36), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_fma u_fma_1 (
+        .clk(clk), .rst_n(rst_n), .in_valid(v_f0_t31), 
+        .in_operand_A(f0_t31), .in_operand_B(u_t31), .in_operand_C(C2), 
+        .out_valid(v_f1_t36), .out_result(f1_t36), .status_overflow(), 
+        .status_underflow(), .status_invalid(), .status_zero()
+    );
     
     // Đổi B sang u_t36
-    fp_fma u_fma_2 (.clk(clk), .rst_n(rst_n), .in_valid(v_f1_t36), .in_operand_A(f1_t36), .in_operand_B(u_t36), .in_operand_C(C1), .out_valid(v_f2_t41), .out_result(f2_t41), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
+    fp_fma u_fma_2 (
+        .clk(clk), .rst_n(rst_n), .in_valid(v_f1_t36), 
+        .in_operand_A(f1_t36), .in_operand_B(u_t36), .in_operand_C(C1), 
+        .out_valid(v_f2_t41), .out_result(f2_t41), .status_overflow(), 
+        .status_underflow(), .status_invalid(), .status_zero()
+    );
     
     // Đổi B sang u_t41
-    fp_fma u_fma_3 (.clk(clk), .rst_n(rst_n), .in_valid(v_f2_t41), .in_operand_A(f2_t41), .in_operand_B(u_t41), .in_operand_C(C0), .out_valid(v_poly_t46), .out_result(poly_t46), .status_overflow(), .status_underflow(), .status_invalid(), .status_zero());
-    
-    // Cân bằng trễ biến z_t22 từ T=22 đến T=46 (Delay 24 chu kỳ) để thực hiện phép nhân cuối
+    fp_fma u_fma_3 (
+        .clk(clk), .rst_n(rst_n), .in_valid(v_f2_t41), 
+        .in_operand_A(f2_t41), .in_operand_B(u_t41), .in_operand_C(C0), 
+        .out_valid(v_poly_t46), .out_result(poly_t46), .status_overflow(), 
+        .status_underflow(), .status_invalid(), .status_zero()
+    );
+
+    // Cân bằng trễ biến z_t22 từ T=22 đến T=46 để thực hiện phép nhân cuối
     wire [31:0] z_t46;
     shift_reg #(.W(32), .D(24)) dly_z_46 (.clk(clk), .in(z_t22), .out(z_t46));
 
@@ -109,9 +127,7 @@ module fp_acos #(
         .status_overflow(), .status_underflow(), .status_invalid(), .status_zero()
     );
 
-    // ==============================================================================
-    // T = 50 -> 58: HẬU XỬ LÝ ĐỒNG BỘ GÓC KẾT HỢP BIÊN BYPASS
-    // ==============================================================================
+    // T = 50 -> 58: Hậu xử lý đồng bộ góc kết hợp biên bypass
     wire is_upper_t50;
     shift_reg #(.W(1), .D(28)) dly_upper_50 (.clk(clk), .in(is_upper_t22), .out(is_upper_t50));
 
@@ -148,11 +164,11 @@ module fp_acos #(
     // Đánh giá các điểm kỳ dị biên cứng cố định chốt đầu ra lý tưởng 0 ULP
     wire [31:0] raw_calc_res = sign_x_t58 ? acos_neg_t58 : acos_abs_t58;
     
-    // Đồng bộ hóa các tín hiệu check biên đặc biệt từ T=0 xuống T=58 (Delay 58 chu kỳ)
+    // Đồng bộ hóa các tín hiệu check biên đặc biệt từ T=0 xuống T=58
     wire is_p1_t58, is_m1_t58, is_z_t58;
     shift_reg #(.W(1), .D(58)) dp58 (.clk(clk), .in(in_operand_A == 32'h3F800000), .out(is_p1_t58));
     shift_reg #(.W(1), .D(58)) dm58 (.clk(clk), .in(in_operand_A == 32'hBF800000), .out(is_m1_t58));
-    shift_reg #(.W(1), .D(58)) dz58 (.clk(clk), .in(abs_x == 32'd0),              .out(is_z_t58));
+    shift_reg #(.W(1), .D(58)) dz58 (.clk(clk), .in(abs_x == 32'd0), .out(is_z_t58));
 
     assign out_valid = v_acos_neg_t58;
     assign out_result = is_p1_t58 ? 32'h00000000 : // acos(1.0) = 0.0

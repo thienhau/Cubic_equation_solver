@@ -17,7 +17,7 @@ module fp_mul #(
     output reg         status_zero
 );
 
-    // T = 0 -> 1
+    // T = 0 -> 1: Phát hiện ngoại lệ đầu vào, tính toán dấu và số mũ tích sơ bộ
     reg        s1_valid;
     reg        s1_sign;
     reg [8:0]  s1_exp; 
@@ -32,7 +32,6 @@ module fp_mul #(
     wire a_is_zero = ~|in_operand_A[30:23];
     wire b_is_zero = ~|in_operand_B[30:23];
     
-    // Ngoại lệ nghiêm trọng: 0 * Inf hoặc Inf * 0 hoặc dữ liệu bản thân là NaN
     wire inf_zero_invalid = (a_is_inf && b_is_zero) || (b_is_inf && a_is_zero) || a_is_nan || b_is_nan;
 
     always @(posedge clk or negedge rst_n) begin
@@ -57,7 +56,7 @@ module fp_mul #(
         end
     end
 
-    // T = 1 -> 2
+    // T = 1 -> 2: Thực hiện phép nhân mantissa của hai toán hạng
     reg        s2_valid;
     reg        s2_sign;
     reg [8:0]  s2_exp;
@@ -83,7 +82,7 @@ module fp_mul #(
         end
     end
 
-    // T = 2 -> 3
+    // T = 2 -> 3: Xác định nhu cầu chuẩn hóa dịch bit dựa trên bit tràn cao nhất [47]
     reg        s3_valid;
     reg        s3_sign;
     reg [8:0]  s3_exp;
@@ -112,7 +111,7 @@ module fp_mul #(
         end
     end
 
-    // T = 3 -> 4
+    // T = 3 -> 4: Chuẩn hóa, thực hiện làm tròn RNE và đóng gói dữ liệu ngõ ra hoàn chỉnh
     wire [47:0] norm_mant = s3_norm_shift ? (s3_mant_res << 1) : s3_mant_res;
     wire [8:0]  norm_exp  = s3_norm_shift ? s3_exp : (s3_exp + 1);
     wire guard_bit  = norm_mant[23];
@@ -133,13 +132,13 @@ module fp_mul #(
             out_valid <= s3_valid;
             if (s3_valid) begin
                 if (s3_invalid) begin
-                    out_result       <= {s3_sign, 8'hFF, 23'h3FFFFF}; // Quiet NaN
+                    out_result       <= {s3_sign, 8'hFF, 23'h3FFFFF}; 
                     status_invalid   <= 1'b1;
                     status_overflow  <= 1'b0;
                     status_underflow <= 1'b0;
                     status_zero      <= 1'b0;
                 end else if (s3_is_nan_inf) begin
-                    out_result       <= {s3_sign, 8'hFF, 23'd0}; // Vô cực hợp lệ
+                    out_result       <= {s3_sign, 8'hFF, 23'd0}; 
                     status_invalid   <= 1'b0;
                     status_overflow  <= 1'b0;
                     status_underflow <= 1'b0;
